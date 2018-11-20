@@ -14,9 +14,9 @@ from models.models import get_model
 from tensorboardX import SummaryWriter
 import logging
 
-logging.basicConfig(filename='baseline.log',level=logging.DEBUG)
-writer = SummaryWriter('baseline_runs')
-REPORT_EACH = 8
+logging.basicConfig(filename='resnet.log',level=logging.DEBUG)
+writer = SummaryWriter('resnet_runs')
+REPORT_EACH = 10
 torch.backends.cudnn.bencmark = True
 cv2.setNumThreads(0)
 
@@ -88,7 +88,7 @@ class Trainer(object):
 			mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
 			mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
 			mean_psnr = np.mean(psnrs[-REPORT_EACH:])
-			if i % 100 == 0:
+			if i % 200 == 0:
 				writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))

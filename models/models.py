@@ -37,11 +37,7 @@ class DeblurModel(nn.Module):
         return '{:.3f}; psnr={}'.format(mean_loss, mean_psnr)
 
     def visualize_data(self, writer, data, outputs, niter):
-        inv_normalize = transforms.Normalize(
-            mean=[-0.485 / 0.229, -0.456 / 0.224, -0.406 / 0.255],
-            std=[1 / 0.229, 1 / 0.224, 1 / 0.255]
-        )
-        images = inv_normalize(vutils.make_grid(data['A']))
+        images = vutils.make_grid(data['A']) + 1 / 2.0
         writer.add_image('Images', images, niter)
 
 

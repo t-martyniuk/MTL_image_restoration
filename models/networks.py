@@ -5,6 +5,7 @@ import functools
 from torch.autograd import Variable
 import numpy as np
 from models.fpn import FPNNet
+from models.unet_seresnext import UNetSEResNext
 ###############################################################################
 # Functions
 ###############################################################################
@@ -183,6 +184,8 @@ def get_nets(model_config):
                                   learn_residual=model_config['learn_residual'])
     elif generator_name == 'fpn':
         model_g = FPNNet()
+    elif generator_name == 'unet_seresnext':
+        model_g = UNetSEResNext()
     else:
         raise ValueError("Generator Network [%s] not recognized." % generator_name)
 
