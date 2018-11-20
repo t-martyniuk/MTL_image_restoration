@@ -17,9 +17,9 @@ model:
     pretrained: False
     norm_layer: instance
     dropout: True  
-num_epochs: 60
+num_epochs: 100
 num_workers: 2
-batch_size: 8
+batch_size: 1
 image_size: [256, 256]
 fineSize: 256
 dataset: 
@@ -28,8 +28,7 @@ optimizer:
     name: adam
     lr: 0.0001
 scheduler:
-    name: plateau
-    patience: 5
-    factor: 0.5
+    name: linear
+    start_epoch: 50
     min_lr: 0.0000001
 

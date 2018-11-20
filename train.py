@@ -39,7 +39,7 @@ class Trainer(object):
 
 			train_loss = self._run_epoch(epoch)
 			val_loss, val_psnr = self._validate(epoch)
-			self.scheduler_G.step(val_loss)
+			self.scheduler_G.step()
 
 			val_metric = val_psnr
 
@@ -56,6 +56,7 @@ class Trainer(object):
 				self.config['experiment_desc'], epoch, train_loss, val_loss, val_metric, self.best_metric))
 
 	def _run_epoch(self, epoch):
+		self.netG = self.netG.train()
 		losses_G = []
 		losses_vgg = []
 		losses_adv = []
@@ -88,7 +89,7 @@ class Trainer(object):
 			mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
 			mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
 			mean_psnr = np.mean(psnrs[-REPORT_EACH:])
-			if i % 200 == 0:
+			if i % 100 == 0:
 				writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
@@ -102,6 +103,7 @@ class Trainer(object):
 		return np.mean(losses_G)
 
 	def _validate(self, epoch):
+		self.netG = self.netG.eval()
 		losses = []
 		psnrs = []
 		tq = tqdm.tqdm(self.val_dataset.dataloader)
