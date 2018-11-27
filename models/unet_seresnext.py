@@ -7,7 +7,7 @@ from torch.nn import Sequential
 from collections import OrderedDict
 import torchvision
 from torch.nn import functional as F
-from pretrainedmodels import se_resnext50_32x4d
+from models.senet import se_resnext50_32x4d
 
 
 def conv3x3(in_, out):
@@ -31,9 +31,8 @@ class UNetSEResNext(nn.Module):
              pretrained=True, is_deconv=True):
         super().__init__()
         self.num_classes = num_classes
-        self.dropout_2d = dropout_2d
-
-        self.encoder = se_resnext50_32x4d(num_classes=1000, pretrained='imagenet')
+        pretrain = 'imagenet' if pretrained is True else None
+        self.encoder = se_resnext50_32x4d(num_classes=1000, pretrained=pretrain)
         bottom_channel_nr = 2048
 
         self.conv1 = self.encoder.layer0
@@ -108,7 +107,7 @@ class DecoderBlockV(nn.Module):
                 ConvRelu(in_channels, middle_channels),
                 nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=4, stride=2,
                                    padding=1),
-                nn.BatchNorm2d(out_channels),
+                nn.InstanceNorm2d(out_channels, affine=False),
                 nn.ReLU(inplace=True)
 
             )
@@ -140,7 +139,7 @@ class DecoderCenter(nn.Module):
                 ConvRelu(in_channels, middle_channels),
                 nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=4, stride=2,
                                    padding=1),
-        nn.BatchNorm2d(out_channels),
+                nn.InstanceNorm2d(out_channels, affine=False),
                 nn.ReLU(inplace=True)
             )
         else:

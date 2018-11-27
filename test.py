@@ -14,6 +14,7 @@ import glob
 import tqdm
 from util.metrics import PSNR
 from albumentations import Compose, CenterCrop
+import random
 
 def get_args():
 	parser = argparse.ArgumentParser('Test an image')
@@ -36,7 +37,7 @@ def get_gt_image(path):
 def test_image(model, save_path, image_path):
 
 	img_transforms = transforms.Compose([
-		transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+		transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 	])
 	size_transform = Compose([
 		CenterCrop(704, 1280)
@@ -51,6 +52,8 @@ def test_image(model, save_path, image_path):
 		result_image = model(img_tensor)
 	result_image = result_image[0].cpu().float().numpy()
 	result_image = (np.transpose(result_image, (1, 2, 0)) + 1) / 2.0 * 255.0
+	result_image = result_image.astype('uint8')
+	print(result_image)
 	gt_image = get_gt_image(image_path)
 	gt_image = size_transform(image=gt_image)['image']
 	_, filename = os.path.split(image_path)
@@ -73,5 +76,6 @@ if __name__ == '__main__':
 	model, _ = get_nets(config['model'])
 	model.load_state_dict(torch.load(args.weights_path)['model'])
 	filenames = glob.glob(config['dataroot_val'] + '/test' + '/**/blur/*.png', recursive=True)
+	filenames = random.sample(filenames, 25)
 	prepare_dirs(args.save_dir)
 	test(model, args, filenames)

@@ -9,6 +9,8 @@ import numpy as np
 from util.metrics import PSNR, SSIM
 import pytorch_ssim
 from PIL import Image
+import cv2
+import os
 
 class DeblurModel(nn.Module):
     def __init__(self):
@@ -37,8 +39,14 @@ class DeblurModel(nn.Module):
         return '{:.3f}; psnr={}'.format(mean_loss, mean_psnr)
 
     def visualize_data(self, writer, data, outputs, niter):
-        images = vutils.make_grid(data['A']) + 1 / 2.0
-        writer.add_image('Images', images, niter)
+        gt_image = data['B'][0].cpu().float().numpy()
+        gt_image = (np.transpose(gt_image, (1, 2, 0)) + 1) / 2.0 * 255.0
+        gt_image = gt_image.astype('uint8')
+        result_image = outputs[0].detach().cpu().float().numpy()
+        result_image = (np.transpose(result_image, (1, 2, 0)) + 1) / 2.0 * 255.0
+        result_image = result_image.astype('uint8')
+        result_image = np.hstack((result_image, gt_image))
+        cv2.imwrite(os.path.join('train_images', str(int(niter)) + '.png'), cv2.cvtColor(result_image, cv2.COLOR_RGB2BGR))
 
 
 def get_model(model_config):
