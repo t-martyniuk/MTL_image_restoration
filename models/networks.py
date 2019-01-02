@@ -7,6 +7,7 @@ import numpy as np
 from models.fpn import FPNNet
 from models.fpn_inception import FPNInception
 from models.unet_seresnext import UNetSEResNext
+from models.fpn_densenet import FPNDense
 ###############################################################################
 # Functions
 ###############################################################################
@@ -192,7 +193,13 @@ def get_nets(model_config):
                          pretrained=model_config['pretrained'],
                          resnet=res)
     elif generator_name == 'fpn_inception':
-        model_g = FPNInception(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        res = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                              use_dropout=model_config['dropout'],
+                              n_blocks=6,
+                              learn_residual=False)
+        model_g = FPNInception(res, norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+    elif generator_name == 'fpn_dense':
+        model_g = FPNDense()
     elif generator_name == 'unet_seresnext':
         model_g = UNetSEResNext(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
                                 pretrained=model_config['pretrained'])

@@ -15,8 +15,8 @@ from models.models import get_model
 from tensorboardX import SummaryWriter
 import logging
 
-logging.basicConfig(filename='fpn.log',level=logging.DEBUG)
-writer = SummaryWriter('fpn_runs')
+logging.basicConfig(filename='res.log',level=logging.DEBUG)
+writer = SummaryWriter('res_runs')
 REPORT_EACH = 100
 torch.backends.cudnn.bencmark = True
 cv2.setNumThreads(0)
@@ -61,6 +61,7 @@ class Trainer(object):
 		losses_vgg = []
 		losses_adv = []
 		psnrs = []
+		ssim = []
 		batches_per_epoch = len(self.train_dataset) / config['batch_size']
 
 		for param_group in self.optimizer_G.param_groups:
@@ -72,32 +73,35 @@ class Trainer(object):
 			inputs, targets = self.model.get_input(data)
 			outputs = self.netG(inputs)
 			self.optimizer_D.zero_grad()
-			loss_D = self.criterionD(self.netD, outputs, targets)
+			loss_D = 0.001 * self.criterionD(self.netD, outputs, targets)
 			loss_D.backward(retain_graph=True)
 			self.optimizer_D.step()
 
 			self.optimizer_G.zero_grad()
 			loss_content = self.criterionG(outputs, targets)
 			loss_adv = self.criterionD.get_g_loss(self.netD, outputs)
-			loss_G = 100 * loss_content + loss_adv
+			#loss_aux = 0.5 * self.criterionG(aux, targets)
+			loss_G = loss_content + 0.001 * loss_adv
 			loss_G.backward()
 			self.optimizer_G.step()
 			losses_G.append(loss_G.item())
 			losses_vgg.append(loss_content.item())
 			losses_adv.append(loss_adv.item())
-			curr_psnr = self.model.get_acc(outputs, targets)
+			curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
 			psnrs.append(curr_psnr)
+			ssim.append(curr_ssim)
 			mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
 			mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
 			mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
 			mean_psnr = np.mean(psnrs[-REPORT_EACH:])
+			mean_ssim = np.mean(ssim[-REPORT_EACH:])
 			if i % 1000 == 0:
 				writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_PSNR', mean_psnr, i + (batches_per_epoch * epoch))
-				self.model.visualize_data(writer, data, outputs,  i + (batches_per_epoch * epoch))
-			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, outputs, targets))
+				writer.add_scalar('Train_SSIM', mean_ssim, i + (batches_per_epoch * epoch))
+			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim, outputs, targets))
 			i += 1
 		tq.close()
 		return np.mean(losses_G)
@@ -105,21 +109,25 @@ class Trainer(object):
 	def _validate(self, epoch):
 		losses = []
 		psnrs = []
+		ssim = []
 		tq = tqdm.tqdm(self.val_dataset.dataloader)
 		tq.set_description('Validation')
 		for data in tq:
 			inputs, targets = self.model.get_input(data)
 			outputs = self.netG(inputs)
 			loss_content = self.criterionG(outputs, targets)
-			loss_G = 100 * loss_content + self.criterionD.get_g_loss(self.netD, outputs)
+			loss_G = loss_content + 0.001 * self.criterionD.get_g_loss(self.netD, outputs)
 			losses.append(loss_G.item())
-			curr_psnr = self.model.get_acc(outputs, targets)
+			curr_psnr, curr_ssim = self.model.get_acc(outputs, targets, full=True)
 			psnrs.append(curr_psnr)
+			ssim.append(curr_ssim)
 		val_loss = np.mean(losses)
 		val_psnr = np.mean(psnrs)
+		val_ssim = np.mean(ssim)
 		tq.close()
 		writer.add_scalar('Validation_Loss', val_loss, epoch)
 		writer.add_scalar('Validation_PSNR', val_psnr, epoch)
+		writer.add_scalar('Validation_SSIM', val_ssim, epoch)
 		return val_loss, val_psnr
 
 	def _get_dataset(self, config, filename):
@@ -163,7 +171,7 @@ class Trainer(object):
 		self.model = get_model(self.config['model'])
 		self.criterionG, self.criterionD = get_loss(self.config['model'])
 		self.optimizer_G = self._get_optim(self.netG)
-		self.optimizer_D = self._get_optim(self.netD, disc=True)
+		self.optimizer_D = self._get_optim(self.netD)
 		self.scheduler_G = self._get_scheduler(self.optimizer_G)
 		self.scheduler_D = self._get_scheduler(self.optimizer_D)
 

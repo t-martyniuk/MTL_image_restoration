@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 from pretrainedmodels import inceptionresnetv2
-from torchvision.models import resnet50, densenet121, densenet201
 from torchsummary import summary
-from models.senet import se_resnext50_32x4d
 import torch.nn.functional as F
 
 class FPNHead(nn.Module):
@@ -21,12 +19,12 @@ class FPNHead(nn.Module):
 
 class FPNInception(nn.Module):
 
-    def __init__(self, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256, pretrained=True):
+    def __init__(self, resnet, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256):
         super().__init__()
 
         # Feature Pyramid Network (FPN) with four feature maps of resolutions
         # 1/4, 1/8, 1/16, 1/32 and `num_filters` filters for all feature maps.
-        self.fpn = FPN(num_filters=num_filters_fpn, pretrained=pretrained)
+        self.fpn = FPN(num_filters=num_filters_fpn)
 
         # The segmentation heads on top of the FPN
 
@@ -48,11 +46,8 @@ class FPNInception(nn.Module):
         )
 
         self.final = nn.Conv2d(num_filters // 2, output_ch, kernel_size=3, padding=1)
-        self.final2 = nn.Sequential(
-            nn.Conv2d(output_ch * 2, output_ch * 2, kernel_size=1),
-            nn.ReLU(),
-        )
-        self.final3 = nn.Conv2d(output_ch * 2, output_ch, kernel_size=3, padding=1)
+
+        self.resnet = resnet
 
     def unfreeze(self):
         self.fpn.unfreeze()
@@ -72,16 +67,14 @@ class FPNInception(nn.Module):
         smoothed = nn.functional.upsample(smoothed, scale_factor=2, mode="nearest")
 
         final = self.final(smoothed)
-        res = torch.cat([final, x], dim=1)
-        res = self.final2(res)
-        res = self.final3(res)
+        res = torch.tanh(final) + x
 
-        return torch.tanh(res)
+        return torch.tanh(self.resnet(res)), torch.clamp(res, min = -1,max = 1)
 
 
 class FPN(nn.Module):
 
-    def __init__(self, num_filters=256, pretrained=True):
+    def __init__(self, num_filters=256):
         """Creates an `FPN` instance for feature extraction.
         Args:
           num_filters: the number of filters in each output pyramid level
