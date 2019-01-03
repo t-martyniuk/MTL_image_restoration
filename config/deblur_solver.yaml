@@ -1,6 +1,6 @@
 ---
 project: deblur_gan
-experiment_desc: resnet2
+experiment_desc: resnet
 dataroot_train: /home/ml/DeblurGAN/GOPRO_Large
 dataroot_val: /home/ml/DeblurGAN/GOPRO_Large
 phase: train
@@ -24,7 +24,7 @@ image_size: [256, 256]
 fineSize: 256
 D_update_ratio: 5
 loss:
-    cont: 100
+    adv: 0.001
 dataset: 
     mode: unaligned
 optimizer: 

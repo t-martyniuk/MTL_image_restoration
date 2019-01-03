@@ -14,9 +14,9 @@ from models.models import get_model
 from tensorboardX import SummaryWriter
 import logging
 
-logging.basicConfig(filename='resnet2.log',level=logging.DEBUG)
-writer = SummaryWriter('resnet2_runs')
-REPORT_EACH = 10
+logging.basicConfig(filename='res.log',level=logging.DEBUG)
+writer = SummaryWriter('res_runs')
+REPORT_EACH = 100
 torch.backends.cudnn.bencmark = True
 cv2.setNumThreads(0)
 
@@ -61,6 +61,7 @@ class Trainer:
 		losses_vgg = []
 		losses_adv = []
 		psnrs = []
+		ssim = []
 		batches_per_epoch = len(self.train_dataset) / config['batch_size']
 
 		for param_group in self.optimizer_G.param_groups:
@@ -74,34 +75,37 @@ class Trainer:
 
 			for _ in range(config['D_update_ratio']):
 				self.optimizer_D.zero_grad()
-				loss_D = self.criterionD(self.netD, outputs, targets)
+				loss_D = config['loss']['adv'] * self.criterionD(self.netD, outputs, targets)
 				loss_D.backward(retain_graph=True)
 				self.optimizer_D.step()
 
 			self.optimizer_G.zero_grad()
 			loss_content = self.criterionG(outputs, targets)
 			loss_adv = self.criterionD.get_g_loss(self.netD, outputs)
-			loss_G = config['loss']['cont'] * loss_content + loss_adv
+			loss_G = loss_content + config['loss']['adv'] * loss_adv
 			loss_G.backward()
 			self.optimizer_G.step()
 			losses_G.append(loss_G.item())
 			losses_vgg.append(loss_content.item())
 			losses_adv.append(loss_adv.item())
-			curr_psnr = self.model.get_acc(outputs, targets)
+			curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
 			psnrs.append(curr_psnr)
+			ssim.append(curr_ssim)
 			mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
 			mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
 			mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
 			mean_psnr = np.mean(psnrs[-REPORT_EACH:])
+			mean_ssim = np.mean(ssim[-REPORT_EACH:])
 			if i % 100 == 0:
 				writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
 				writer.add_scalar('Train_PSNR', mean_psnr, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_SSIM', mean_ssim, i + (batches_per_epoch * epoch))
 				writer.add_image('output', outputs)
 				writer.add_image('target', targets)
 				self.model.visualize_data(writer, data, outputs,  i + (batches_per_epoch * epoch))
-			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, outputs, targets))
+			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim, outputs, targets))
 			i += 1
 		tq.close()
 		return np.mean(losses_G)
@@ -110,21 +114,25 @@ class Trainer:
 		self.netG = self.netG.eval()
 		losses = []
 		psnrs = []
+		ssim = []
 		tq = tqdm.tqdm(self.val_dataset.dataloader)
 		tq.set_description('Validation')
 		for data in tq:
 			inputs, targets = self.model.get_input(data)
 			outputs = self.netG(inputs)
 			loss_content = self.criterionG(outputs, targets)
-			loss_G = config['loss']['cont'] * loss_content + self.criterionD.get_g_loss(self.netD, outputs)
+			loss_G = loss_content +  config['loss']['adv'] * self.criterionD.get_g_loss(self.netD, outputs)
 			losses.append(loss_G.item())
-			curr_psnr = self.model.get_acc(outputs, targets)
+			curr_psnr, curr_ssim = self.model.get_acc(outputs, targets, full=True)
 			psnrs.append(curr_psnr)
+			ssim.append(curr_ssim)
 		val_loss = np.mean(losses)
 		val_psnr = np.mean(psnrs)
+		val_ssim = np.mean(ssim)
 		tq.close()
 		writer.add_scalar('Validation_Loss', val_loss, epoch)
 		writer.add_scalar('Validation_PSNR', val_psnr, epoch)
+		writer.add_scalar('Validation_SSIM', val_ssim, epoch)
 		writer.add_image('output', outputs)
 		writer.add_image('target', targets)
 		return val_loss, val_psnr

@@ -36,10 +36,10 @@ def get_gt_image(path):
 def test_image(model, save_path, image_path):
 
 	img_transforms = transforms.Compose([
-		transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+		transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 	])
 	size_transform = Compose([
-		CenterCrop(704, 1280)
+		CenterCrop(512, 512)
 	])
 	img = cv2.imread(image_path)
 	img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -48,7 +48,7 @@ def test_image(model, save_path, image_path):
 	img_tensor = img_transforms(img_tensor)
 	with torch.no_grad():
 		img_tensor = Variable(img_tensor.unsqueeze(0).cuda())
-		result_image = model(img_tensor)
+		result_image, _ = model(img_tensor)
 	result_image = result_image[0].cpu().float().numpy()
 	result_image = (np.transpose(result_image, (1, 2, 0)) + 1) / 2.0 * 255.0
 	gt_image = get_gt_image(image_path)
