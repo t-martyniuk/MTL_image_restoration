@@ -1,8 +1,6 @@
 ---
 project: deblur_gan
-experiment_desc: resnet2
-dataroot_train: /home/ml/DeblurGAN/GOPRO_Large
-dataroot_val: /home/ml/DeblurGAN/GOPRO_Large
+experiment_desc: mtl1
 phase: train
 warmup_num: 0
 model:
@@ -19,15 +17,22 @@ model:
     dropout: True  
 num_epochs: 100
 num_workers: 2
-batch_size: 8
+datasets:
+  - type: unaligned
+    batch_size: 8
+    dataroot_train: /home/ml/DeblurGAN/GOPRO_Large
+    dataroot_val: /home/ml/DeblurGAN/GOPRO_Large
+    fineSize: 256
+  - type: haze
+    batch_size: 8
+    dataroot_train: /home/ml/DeblurGAN/GOPRO_Large
+    dataroot_val: /home/ml/DeblurGAN/GOPRO_Large
+    fineSize: 256
 image_size: [256, 256]
-fineSize: 256
 D_update_ratio: 5
 loss:
     cont: 100
-dataset: 
-    mode: unaligned
-optimizer: 
+optimizer:
     name: adam
     lr_G: 0.0001
     lr_D: 0.0002

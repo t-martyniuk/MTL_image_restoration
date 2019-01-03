@@ -3,9 +3,13 @@ from data.base_data_loader import BaseDataLoader
 
 
 def CreateDataset(config, filename):
+    print(config)
     if config['dataset']['mode'] == 'unaligned':
         from data.unaligned_dataset import UnalignedDataset
         dataset = UnalignedDataset()
+    elif config['dataset']['mode'] == 'haze':
+        from data.haze_dataset import HazeDataset
+        dataset = HazeDataset()
     else:
         raise ValueError("Dataset [%s] not recognized." % config['dataset_mode'])
 

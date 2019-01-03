@@ -14,8 +14,8 @@ from models.models import get_model
 from tensorboardX import SummaryWriter
 import logging
 
-logging.basicConfig(filename='resnet2.log',level=logging.DEBUG)
-writer = SummaryWriter('resnet2_runs')
+logging.basicConfig(filename='mtl1.log',level=logging.DEBUG)
+writer = SummaryWriter('mtl1_runs')
 REPORT_EACH = 10
 torch.backends.cudnn.bencmark = True
 cv2.setNumThreads(0)
@@ -23,8 +23,8 @@ cv2.setNumThreads(0)
 class Trainer:
 	def __init__(self, config):
 		self.config = config
-		self.train_dataset = self._get_dataset(config, 'train')
-		self.val_dataset = self._get_dataset(config, 'test')
+		self.train_dataset = self._get_datasets(config, 'train')
+		self.val_dataset = self._get_datasets(config, 'test')
 		self.best_metric = 0
 		self.warmup_epochs = config['warmup_num']
 
@@ -61,65 +61,87 @@ class Trainer:
 		losses_vgg = []
 		losses_adv = []
 		psnrs = []
-		batches_per_epoch = len(self.train_dataset) / config['batch_size']
 
+		datasets = {"batches_per_epoch":[], "dataiterators":[]}
+		for type, dataset in self.train_dataset.items():
+			batches_per_epoch = len(dataset) // dataset.dataloader.batch_size
+			datasets["batches_per_epoch"].append(batches_per_epoch)
+			datasets["dataiterators"].append(iter(dataset))
+
+		# TODO: check what going on
 		for param_group in self.optimizer_G.param_groups:
 			lr = param_group['lr']
-		tq = tqdm.tqdm(self.train_dataset.dataloader)
+
+		tq = tqdm.tqdm(range(max(datasets["batches_per_epoch"])))
 		tq.set_description('Epoch {}, lr {}'.format(epoch, lr))
 		i = 0
-		for data in tq:
-			inputs, targets = self.model.get_input(data)
-			outputs = self.netG(inputs)
+		for j in tq:
+			for idx, dataset in enumerate(datasets["dataiterators"]):
+				data = next(dataset)
+				inputs, targets = self.model.get_input(data)
+				outputs = self.netG(inputs)
 
-			for _ in range(config['D_update_ratio']):
-				self.optimizer_D.zero_grad()
-				loss_D = self.criterionD(self.netD, outputs, targets)
-				loss_D.backward(retain_graph=True)
-				self.optimizer_D.step()
+				for _ in range(config['D_update_ratio']):
+					self.optimizer_D.zero_grad()
+					loss_D = self.criterionD(self.netD, outputs, targets)
+					loss_D.backward(retain_graph=True)
+					self.optimizer_D.step()
 
-			self.optimizer_G.zero_grad()
-			loss_content = self.criterionG(outputs, targets)
-			loss_adv = self.criterionD.get_g_loss(self.netD, outputs)
-			loss_G = config['loss']['cont'] * loss_content + loss_adv
-			loss_G.backward()
-			self.optimizer_G.step()
-			losses_G.append(loss_G.item())
-			losses_vgg.append(loss_content.item())
-			losses_adv.append(loss_adv.item())
-			curr_psnr = self.model.get_acc(outputs, targets)
-			psnrs.append(curr_psnr)
-			mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
-			mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
-			mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
-			mean_psnr = np.mean(psnrs[-REPORT_EACH:])
-			if i % 100 == 0:
-				writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
-				writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
-				writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
-				writer.add_scalar('Train_PSNR', mean_psnr, i + (batches_per_epoch * epoch))
-				writer.add_image('output', outputs)
-				writer.add_image('target', targets)
-				self.model.visualize_data(writer, data, outputs,  i + (batches_per_epoch * epoch))
+				self.optimizer_G.zero_grad()
+				loss_content = self.criterionG(outputs, targets)
+				loss_adv = self.criterionD.get_g_loss(self.netD, outputs)
+				loss_G = config['loss']['cont'] * loss_content + loss_adv
+				loss_G.backward()
+				self.optimizer_G.step()
+				losses_G.append(loss_G.item())
+				losses_vgg.append(loss_content.item())
+				losses_adv.append(loss_adv.item())
+				curr_psnr = self.model.get_acc(outputs, targets)
+				psnrs.append(curr_psnr)
+				mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
+				mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
+				mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
+				mean_psnr = np.mean(psnrs[-REPORT_EACH:])
+				if i % 100 == 0:
+					writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
+					writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
+					writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
+					writer.add_scalar('Train_PSNR', mean_psnr, i + (batches_per_epoch * epoch))
+					writer.add_image('output', outputs)
+					writer.add_image('target', targets)
+					self.model.visualize_data(writer, data, outputs, i + (batches_per_epoch * epoch))
 			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, outputs, targets))
 			i += 1
 		tq.close()
 		return np.mean(losses_G)
 
+
+
+
 	def _validate(self, epoch):
 		self.netG = self.netG.eval()
 		losses = []
 		psnrs = []
-		tq = tqdm.tqdm(self.val_dataset.dataloader)
+
+		datasets = {"batches_per_epoch":[], "dataiterators":[]}
+		for type, dataset in self.val_dataset.items():
+			batches_per_epoch = len(dataset) // dataset.dataloader.batch_size
+			datasets["batches_per_epoch"].append(batches_per_epoch)
+			datasets["dataiterators"].append(iter(dataset))
+
+		tq = tqdm.tqdm(range(max(datasets["batches_per_epoch"])))
 		tq.set_description('Validation')
-		for data in tq:
-			inputs, targets = self.model.get_input(data)
-			outputs = self.netG(inputs)
-			loss_content = self.criterionG(outputs, targets)
-			loss_G = config['loss']['cont'] * loss_content + self.criterionD.get_g_loss(self.netD, outputs)
-			losses.append(loss_G.item())
-			curr_psnr = self.model.get_acc(outputs, targets)
-			psnrs.append(curr_psnr)
+		for j in tq:
+			for dataset in datasets["dataiterators"]:
+
+				data = next(dataset)
+				inputs, targets = self.model.get_input(data)
+				outputs = self.netG(inputs)
+				loss_content = self.criterionG(outputs, targets)
+				loss_G = config['loss']['cont'] * loss_content + self.criterionD.get_g_loss(self.netD, outputs)
+				losses.append(loss_G.item())
+				curr_psnr = self.model.get_acc(outputs, targets)
+				psnrs.append(curr_psnr)
 		val_loss = np.mean(losses)
 		val_psnr = np.mean(psnrs)
 		tq.close()
@@ -132,6 +154,20 @@ class Trainer:
 	def _get_dataset(self, config, filename):
 		data_loader = CreateDataLoader(config, filename)
 		return data_loader.load_data()
+
+	def _get_datasets(self, config, filename):
+		if "datasets" not in config:
+			return self._get_dataset(config, filename)
+		else:
+			train_dataset = {}
+			for dataset in config["datasets"]:
+				my_config = {"dataset": {"mode": dataset["type"]}, "batch_size": dataset["batch_size"],
+							 "dataroot_train": dataset["dataroot_train"], "dataroot_val": dataset["dataroot_val"],
+							 "fineSize": dataset["fineSize"], "num_workers": config["num_workers"]}
+				train_dataset[dataset["type"]] = self._get_dataset(my_config, filename)
+			return train_dataset
+
+
 
 	def _get_optim(self, model, lr):
 		if self.config['optimizer']['name'] == 'adam':
@@ -163,8 +199,13 @@ class Trainer:
 		return scheduler
 
 	def _init_params(self):
-		self.netG, self.netD = get_nets(self.config['model'])
-		self.netG.cuda()
+		dict_for_G, self.netD = get_nets(self.config['model'])
+		self.decoder1 = dict_for_G['decoder1']
+		self.decoder2 = dict_for_G['decoder2']
+		self.encoder = dict_for_G['encoder']
+		self.decoder1.cuda()
+		self.decoder2.cuda()
+		self.encoder.cuda()
 		self.netD.cuda()
 		self.model = get_model(self.config['model'])
 		self.criterionG, self.criterionD = get_loss(self.config['model'])
@@ -175,7 +216,7 @@ class Trainer:
 
 
 if __name__ == '__main__':
-	with open('config/deblur_solver.yaml', 'r') as f:
+	with open('config/mtl_solver.yaml', 'r') as f:
 		config = yaml.load(f)
 	trainer = Trainer(config)
 	trainer.train()

@@ -29,6 +29,88 @@ def get_norm_layer(norm_type='instance'):
 # downsampling/upsampling operations.
 # Code and idea originally from Justin Johnson's architecture.
 # https://github.com/jcjohnson/fast-neural-style/
+
+class ResNetEncoder(nn.Module):
+    def __init__(self, input_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+        assert(n_blocks >= 0)
+        super(ResNetEncoder, self).__init__()
+        self.input_nc = input_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
+                           bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        n_downsampling = 2
+        for i in range(n_downsampling):
+            mult = 2**i
+            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * mult * 2),
+                      nn.ReLU(True)]
+
+        mult = 2**n_downsampling
+        for i in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type,
+                                  norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        output = self.model(input)
+        return output
+
+class ResNetDecoder(nn.Module):
+    def __init__(self, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d):
+        super(ResNetDecoder, self).__init__()
+        self.output_nc = output_nc
+        self.ngf = ngf
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+        model = []
+        n_downsampling = 2
+
+        for i in range(n_downsampling):
+            mult = 2**(n_downsampling - i)
+            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1, output_padding=1,
+                                         bias=use_bias),
+                      norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        model += [nn.Tanh()]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        output = self.model(input)
+        return output
+
+class EncoderDecoder:
+    def __init__(self, encoder, decoder, learn_residual = False):
+        self.learn_residual = learn_residual
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def forward(self, input):
+        enc = self.encoder(input)
+        output = self.decoder(enc)
+        if self.learn_residual:
+            output = input + output
+            output = torch.clamp(output,min = -1,max = 1)
+        return output
+
+
 class ResnetGenerator(nn.Module):
     def __init__(self, input_nc=3, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, use_parallel = True, learn_residual = False, padding_type='reflect'):
         assert(n_blocks >= 0)
@@ -176,19 +258,6 @@ class NLayerDiscriminator(nn.Module):
 
 
 def get_nets(model_config):
-    generator_name = model_config['g_name']
-    if generator_name == 'resnet':
-        model_g = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                  use_dropout=model_config['dropout'],
-                                  n_blocks=model_config['blocks'],
-                                  learn_residual=model_config['learn_residual'])
-    elif generator_name == 'fpn':
-        model_g = FPNNet()
-    elif generator_name == 'unet_seresnext':
-        model_g = UNetSEResNext()
-    else:
-        raise ValueError("Generator Network [%s] not recognized." % generator_name)
-
     discriminator_name = model_config['d_name']
     if discriminator_name == 'n_layers':
         model_d = NLayerDiscriminator(n_layers=model_config['d_layers'],
@@ -197,4 +266,33 @@ def get_nets(model_config):
     else:
         raise ValueError("Discriminator Network [%s] not recognized." % discriminator_name)
 
-    return nn.DataParallel(model_g), nn.DataParallel(model_d)
+    generator_name = model_config['g_name']
+    if "datasets" in model_config:
+        if generator_name == 'resnet':
+            encoder = ResNetEncoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                    use_dropout=model_config['dropout'],
+                                    n_blocks=model_config['blocks'])
+            decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+            decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        # elif generator_name == 'fpn':
+        #     model_g = FPNNet()
+        # elif generator_name == 'unet_seresnext':
+        #     model_g = UNetSEResNext()
+        else:
+            raise ValueError("Generator Network [%s] not recognized." % generator_name)
+        return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
+                'decoder2': nn.DataParallel(decoder2)}, nn.DataParallel(model_d)
+
+    else:
+        if generator_name == 'resnet':
+            model_g = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                      use_dropout=model_config['dropout'],
+                                      n_blocks=model_config['blocks'],
+                                      learn_residual=model_config['learn_residual'])
+        elif generator_name == 'fpn':
+            model_g = FPNNet()
+        elif generator_name == 'unet_seresnext':
+            model_g = UNetSEResNext()
+        else:
+            raise ValueError("Generator Network [%s] not recognized." % generator_name)
+        return nn.DataParallel(model_g), nn.DataParallel(model_d)
