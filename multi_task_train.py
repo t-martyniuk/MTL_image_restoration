@@ -194,13 +194,13 @@ class Trainer:
 
 
 
-	def _get_optim(self, model, lr):
+	def _get_optim(self, list_of_params, lr):
 		if self.config['optimizer']['name'] == 'adam':
-			optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+			optimizer = optim.Adam(filter(lambda p: p.requires_grad, list_of_params), lr=lr)
 		elif self.config['optimizer']['name'] == 'sgd':
-			optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+			optimizer = optim.SGD(filter(lambda p: p.requires_grad, list_of_params), lr=lr)
 		elif self.config['optimizer']['name'] == 'adadelta':
-			optimizer = optim.Adadelta(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+			optimizer = optim.Adadelta(filter(lambda p: p.requires_grad, list_of_params), lr=lr)
 		else:
 			raise ValueError("Optimizer [%s] not recognized." % self.config['optimizer']['name'])
 		return optimizer
@@ -224,23 +224,24 @@ class Trainer:
 		return scheduler
 
 	def _init_params(self):
-		self.netG, dict_for_D = get_nets_multitask(self.config['model'])
-		# self.decoder1 = dict_for_G['decoder1']
-		# self.decoder2 = dict_for_G['decoder2']
-		# self.encoder = dict_for_G['encoder']
+		dict_for_G, dict_for_D = get_nets_multitask(self.config['model'])
+		self.decoder1 = dict_for_G['decoder1']
+		self.decoder2 = dict_for_G['decoder2']
+		self.encoder = dict_for_G['encoder']
 		self.netD1 = dict_for_D['discr1']
 		self.nedD2 = dict_for_D['discr2']
-		# self.decoder1.cuda()
-		# self.decoder2.cuda()
-		# self.encoder.cuda()
-		self.netG.cuda()
+		self.decoder1.cuda()
+		self.decoder2.cuda()
+		self.encoder.cuda()
+		#self.netG.cuda()
 		self.netD1.cuda()
 		self.netD2.cuda()
 		self.model = get_model(self.config['model'])
 		self.criterionG, self.criterionD = get_loss(self.config['model'])
-		self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
-		self.optimizer_D1 = self._get_optim(self.netD1, self.config['optimizer']['lr_D'])
-		self.optimizer_D2 = self._get_optim(self.netD2, self.config['optimizer']['lr_D'])
+		list_of_params = list(self.decoder1.parameters()) + list(self.decoder2.parameters()) + list(self.encoder.parameters())
+		self.optimizer_G = self._get_optim(list_of_params, self.config['optimizer']['lr_G'])
+		self.optimizer_D1 = self._get_optim(self.netD1.parameters(), self.config['optimizer']['lr_D'])
+		self.optimizer_D2 = self._get_optim(self.netD2.parameters(), self.config['optimizer']['lr_D'])
 		self.scheduler_G = self._get_scheduler(self.optimizer_G)
 		self.scheduler_D1 = self._get_scheduler(self.optimizer_D1)
 		self.scheduler_D2 = self._get_scheduler(self.optimizer_D2)

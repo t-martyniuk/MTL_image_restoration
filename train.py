@@ -132,7 +132,7 @@ class Trainer:
 		tq.close()
 		writer.add_scalar('Validation_Loss', val_loss, epoch)
 		writer.add_scalar('Validation_PSNR', val_psnr, epoch)
-		writer.add_scalar('Validation_SSIM', val_ssim, epoch)
+		writer.add_scalar('Validation_SSIM', val_psnr, epoch)
 		writer.add_image('output', outputs)
 		writer.add_image('target', targets)
 		return val_loss, val_psnr

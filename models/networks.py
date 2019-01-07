@@ -100,22 +100,18 @@ class ResNetDecoder(nn.Module):
         return output
 
 class EncoderDecoder:
-    def __init__(self, encoder, decoder1, decoder2, learn_residual = False):
+    def __init__(self, encoder, decoder, learn_residual = False):
         self.learn_residual = learn_residual
         self.encoder = encoder
-        self.decoder1 = decoder1
-        self.decoder2 = decoder2
+        self.decoder = decoder
 
     def forward(self, input):
         enc = self.encoder(input)
-        output1 = self.decoder1(enc)
-        output2 = self.decoder2(enc)
+        output = self.decoder(enc)
         if self.learn_residual:
-            output1 = input + output1
-            output2 = input + output2
-            output1 = torch.clamp(output1, min = -1, max = 1)
-            output2 = torch.clamp(output2, min = -1, max = 1)
-        return output1, output2
+            output = input + output
+            output = torch.clamp(output, min = -1, max = 1)
+        return output
 
 
 class ResnetGenerator(nn.Module):
@@ -325,13 +321,11 @@ def get_nets_multitask(model_config):
                                 n_blocks=model_config['blocks'])
         decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
         decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
-        model_g = EncoderDecoder(encoder, decoder1, decoder2, True)
     else:
         raise ValueError("Generator Network [%s] not recognized." % generator_name)
-    # return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
-    #         'decoder2': nn.DataParallel(decoder2)}, \
-    #        {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
-    return nn.DataParallel(model_g), {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
+    return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
+            'decoder2': nn.DataParallel(decoder2)}, \
+           {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
 
 
 
