@@ -34,7 +34,7 @@ class DeblurModel(nn.Module):
         ssim = SSIM(fake, real, multichannel=True)
         return psnr, ssim
 
-    def get_loss(self, mean_loss, mean_psnr, mean_ssim, output=None, target=None):
+    def get_loss(self, mean_loss, mean_psnr, mean_ssim):
         return '{:.3f}; psnr={}; ssim={}'.format(mean_loss, mean_psnr, mean_ssim)
 
     def visualize_data(self, writer, data, outputs, niter):

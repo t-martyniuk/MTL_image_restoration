@@ -56,7 +56,7 @@ class Trainer:
 				self.config['experiment_desc'], epoch, train_loss, val_loss, val_metric, self.best_metric))
 
 	def _run_epoch(self, epoch):
-		self.netG = self.netG.train()
+		# self.netG = self.netG.train()
 		losses_G = []
 		losses_G_1 = []
 		losses_G_2 = []
@@ -64,8 +64,10 @@ class Trainer:
 		losses_vgg_2 = []
 		losses_adv_1 = []
 		losses_adv_2 = []
-		psnrs = []
-		ssim = []
+		psnrs_1 = []
+		psnrs_2 = []
+		ssims_1 = []
+		ssims_2 = []
 
 		datasets = {"batches_per_epoch":[], "dataiterators":[]}
 		for type, dataset in self.train_dataset.items():
@@ -85,7 +87,7 @@ class Trainer:
 				data = next(dataset)
 				inputs, targets = self.model.get_input(data)
 				if idx == 0:
-					outputs, _ = self.netG(inputs)
+					outputs = self.decoder1(self.encoder(inputs))
 					for _ in range(config['D_update_ratio']):
 						self.optimizer_D1.zero_grad()
 						loss_D1 = config['loss']['adv'] * self.criterionD(self.netD1, outputs, targets)
@@ -97,9 +99,19 @@ class Trainer:
 					losses_vgg_1.append(loss_content.item())
 					lg1 = loss_content + config['loss']['adv'] * loss_adv
 					losses_G_1.append(lg1.item())
+					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
+					psnrs_1.append(curr_psnr)
+					ssims_1.append(curr_ssim)
+					mean_loss_vgg_1 = np.mean(losses_vgg_1[-REPORT_EACH:])
+					mean_loss_adv_1 = np.mean(losses_adv_1[-REPORT_EACH:])
+					mean_psnr_1 = np.mean(psnrs_1[-REPORT_EACH:])
+					mean_ssim_1 = np.mean(ssims_1[-REPORT_EACH:])
+					mean_loss_G_1 = np.mean(losses_G_1[-REPORT_EACH:])
+
+
 
 				else:
-					_, outputs = self.netG(inputs)
+					outputs = self.decoder2(self.encoder(inputs))
 					for _ in range(config['D_update_ratio']):
 						self.optimizer_D2.zero_grad()
 						loss_D2 = config['loss']['adv'] * self.criterionD(self.netD2, outputs, targets)
@@ -111,34 +123,37 @@ class Trainer:
 					losses_vgg_2.append(loss_content.item())
 					lg2 = loss_content + config['loss']['adv'] * loss_adv
 					losses_G_2.append(lg2.item())
+					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
+					psnrs_2.append(curr_psnr)
+					ssims_2.append(curr_ssim)
+					mean_loss_vgg_2 = np.mean(losses_vgg_2[-REPORT_EACH:])
+					mean_loss_adv_2 = np.mean(losses_adv_2[-REPORT_EACH:])
+					mean_psnr_2 = np.mean(psnrs_2[-REPORT_EACH:])
+					mean_ssim_2 = np.mean(ssims_2[-REPORT_EACH:])
+					mean_loss_G_2 = np.mean(losses_G_2[-REPORT_EACH:])
 
 				self.optimizer_G.zero_grad()
 				loss_G += loss_content + config['loss']['adv'] * loss_adv
 
 			loss_G.backward()
 			self.optimizer_G.step()
-			#losses_G.append(loss_G.item())
-				curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
-				psnrs.append(curr_psnr)
-				ssim.append(curr_ssim)
-				mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
-				mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
-				mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
-				mean_psnr = np.mean(psnrs[-REPORT_EACH:])
-				mean_ssim = np.mean(ssim[-REPORT_EACH:])
-				if i % 100 == 0:
-					writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
-					writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
-					writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
-					writer.add_scalar('Train_PSNR', mean_psnr, i + (batches_per_epoch * epoch))
-					writer.add_scalar('Train_SSIM', mean_ssim, i + (batches_per_epoch * epoch))
-					writer.add_image('output', outputs)
-					writer.add_image('target', targets)
-					self.model.visualize_data(writer, data, outputs, i + (batches_per_epoch * epoch))
-				tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim, outputs, targets))
+			losses_G.append(loss_G.item())
+
+			mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
+
+			# if i % 100 == 0:
+			# 	writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
+			# 	writer.add_scalar('Train_G_Loss_vgg_1', mean_loss_vgg_1, i + (batches_per_epoch * epoch))
+			# 	writer.add_scalar('Train_G_Loss_adv_1', mean_loss_adv_1, i + (batches_per_epoch * epoch))
+			# 	writer.add_scalar('Train_PSNR_1', mean_psnr_1, i + (batches_per_epoch * epoch))
+			# 	writer.add_scalar('Train_SSIM_1', mean_ssim_1, i + (batches_per_epoch * epoch))
+			# 	writer.add_image('output', outputs)
+			# 	writer.add_image('target', targets)
+			# 	self.model.visualize_data(writer, data, outputs, i + (batches_per_epoch * epoch))
+			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr_1, mean_ssim_1))
 				#i += 1
-			tq.close()
-			return np.mean(losses_G)
+		tq.close()
+		return np.mean(losses_G)
 
 
 

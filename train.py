@@ -105,7 +105,7 @@ class Trainer:
 				writer.add_image('output', outputs)
 				writer.add_image('target', targets)
 				self.model.visualize_data(writer, data, outputs,  i + (batches_per_epoch * epoch))
-			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim, outputs, targets))
+			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim))
 			i += 1
 		tq.close()
 		return np.mean(losses_G)
