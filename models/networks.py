@@ -33,7 +33,8 @@ def get_norm_layer(norm_type='instance'):
 # https://github.com/jcjohnson/fast-neural-style/
 
 class ResNetEncoder(nn.Module):
-    def __init__(self, input_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    def __init__(self, input_nc=3, ngf=64, norm_layer=nn.BatchNorm2d,
+                 use_dropout=False, n_blocks=6, padding_type='reflect'):
         assert(n_blocks >= 0)
         super(ResNetEncoder, self).__init__()
         self.input_nc = input_nc
@@ -99,22 +100,27 @@ class ResNetDecoder(nn.Module):
         return output
 
 class EncoderDecoder:
-    def __init__(self, encoder, decoder, learn_residual = False):
+    def __init__(self, encoder, decoder1, decoder2, learn_residual = False):
         self.learn_residual = learn_residual
         self.encoder = encoder
-        self.decoder = decoder
+        self.decoder1 = decoder1
+        self.decoder2 = decoder2
 
     def forward(self, input):
         enc = self.encoder(input)
-        output = self.decoder(enc)
+        output1 = self.decoder1(enc)
+        output2 = self.decoder2(enc)
         if self.learn_residual:
-            output = input + output
-            output = torch.clamp(output,min = -1,max = 1)
-        return output
+            output1 = input + output1
+            output2 = input + output2
+            output1 = torch.clamp(output1, min = -1, max = 1)
+            output2 = torch.clamp(output2, min = -1, max = 1)
+        return output1, output2
 
 
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc=3, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, use_parallel = True, learn_residual = False, padding_type='reflect'):
+    def __init__(self, input_nc=3, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False,
+                 n_blocks=6, use_parallel = True, learn_residual = False, padding_type='reflect'):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -143,7 +149,8 @@ class ResnetGenerator(nn.Module):
 
         mult = 2**n_downsampling
         for i in range(n_blocks):
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer,
+                                  use_dropout=use_dropout, use_bias=use_bias)]
 
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
@@ -212,7 +219,8 @@ class ResnetBlock(nn.Module):
 
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
-    def __init__(self, input_nc=3, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[], use_parallel = True):
+    def __init__(self, input_nc=3, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d,
+                 use_sigmoid=False, gpu_ids=[], use_parallel = True):
         super(NLayerDiscriminator, self).__init__()
         self.use_parallel = use_parallel
         if type(norm_layer) == functools.partial:
@@ -258,8 +266,35 @@ class NLayerDiscriminator(nn.Module):
     def forward(self, input):
         return self.model(input)
 
-
 def get_nets(model_config):
+    generator_name = model_config['g_name']
+    if generator_name == 'resnet':
+        model_g = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                  use_dropout=model_config['dropout'],
+                                  n_blocks=model_config['blocks'],
+                                  learn_residual=model_config['learn_residual'])
+    elif generator_name == 'fpn':
+        res = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                  use_dropout=model_config['dropout'],
+                                  n_blocks=6,
+                                  learn_residual=False)
+        model_g = FPNNet(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                         pretrained=model_config['pretrained'],
+                         resnet=res)
+    elif generator_name == 'fpn_inception':
+        res = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                              use_dropout=model_config['dropout'],
+                              n_blocks=6,
+                              learn_residual=False)
+        model_g = FPNInception(res, norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+    elif generator_name == 'fpn_dense':
+        model_g = FPNDense()
+    elif generator_name == 'unet_seresnext':
+        model_g = UNetSEResNext(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                pretrained=model_config['pretrained'])
+    else:
+        raise ValueError("Generator Network [%s] not recognized." % generator_name)
+
     discriminator_name = model_config['d_name']
     if discriminator_name == 'n_layers':
         model_d = NLayerDiscriminator(n_layers=model_config['d_layers'],
@@ -268,42 +303,36 @@ def get_nets(model_config):
     else:
         raise ValueError("Discriminator Network [%s] not recognized." % discriminator_name)
 
-    generator_name = model_config['g_name']
-    if "datasets" in model_config:
-        if generator_name == 'resnet':
-            encoder = ResNetEncoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                    use_dropout=model_config['dropout'],
-                                    n_blocks=model_config['blocks'])
-            decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
-            decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
-        # elif generator_name == 'fpn':
-        #     model_g = FPNNet()
-        # elif generator_name == 'unet_seresnext':
-        #     model_g = UNetSEResNext()
-        else:
-            raise ValueError("Generator Network [%s] not recognized." % generator_name)
-        return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
-                'decoder2': nn.DataParallel(decoder2)}, nn.DataParallel(model_d)
+    return nn.DataParallel(model_g), nn.DataParallel(model_d)
 
+
+def get_nets_multitask(model_config):
+    discriminator_name = model_config['d_name']
+    if discriminator_name == 'n_layers':
+        model_d1 = NLayerDiscriminator(n_layers=model_config['d_layers'],
+                                       norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                       use_sigmoid=(model_config['disc_loss'] == 'gan'))
+        model_d2 = NLayerDiscriminator(n_layers=model_config['d_layers'],
+                                       norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                       use_sigmoid=(model_config['disc_loss'] == 'gan'))
     else:
-        if generator_name == 'resnet':
-            model_g = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                      use_dropout=model_config['dropout'],
-                                      n_blocks=model_config['blocks'],
-                                      learn_residual=model_config['learn_residual'])
-        elif generator_name == 'fpn':
-            model_g = FPNNet()
-        elif generator_name == 'unet_seresnext':
-            model_g = UNetSEResNext(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                    pretrained=model_config['pretrained'])
-        elif generator_name == 'fpn_inception':
-            res = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                  use_dropout=model_config['dropout'],
-                                  n_blocks=6,
-                                  learn_residual=False)
-            model_g = FPNInception(res, norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
-        elif generator_name == 'fpn_dense':
-            model_g = FPNDense()
-        else:
-            raise ValueError("Generator Network [%s] not recognized." % generator_name)
-        return nn.DataParallel(model_g), nn.DataParallel(model_d)
+        raise ValueError("Discriminator Network [%s] not recognized." % discriminator_name)
+
+    generator_name = model_config['g_name']
+    if generator_name == 'resnet':
+        encoder = ResNetEncoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+                                use_dropout=model_config['dropout'],
+                                n_blocks=model_config['blocks'])
+        decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        model_g = EncoderDecoder(encoder, decoder1, decoder2, True)
+    else:
+        raise ValueError("Generator Network [%s] not recognized." % generator_name)
+    # return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
+    #         'decoder2': nn.DataParallel(decoder2)}, \
+    #        {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
+    return nn.DataParallel(model_g), {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
+
+
+
+

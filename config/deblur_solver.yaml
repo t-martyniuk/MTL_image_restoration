@@ -17,8 +17,8 @@ model:
     pretrained: False
     norm_layer: instance
     dropout: True  
-num_epochs: 100
-num_workers: 2
+num_epochs: 80
+num_workers: 4
 batch_size: 8
 image_size: [256, 256]
 fineSize: 256
@@ -33,6 +33,6 @@ optimizer:
     lr_D: 0.0002
 scheduler:
     name: linear
-    start_epoch: 50
+    start_epoch: 40
     min_lr: 0.0000001
 

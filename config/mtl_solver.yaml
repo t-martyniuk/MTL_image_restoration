@@ -1,5 +1,5 @@
 ---
-project: deblur_gan
+project: multi_task_learning
 experiment_desc: mtl1
 phase: train
 warmup_num: 0

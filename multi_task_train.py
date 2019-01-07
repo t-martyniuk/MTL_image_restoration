@@ -8,7 +8,7 @@ import cv2
 import yaml
 from schedulers import WarmRestart, LinearDecay
 import numpy as np
-from models.networks import get_nets
+from models.networks import get_nets_multitask
 from models.losses import get_loss
 from models.models import get_model
 from tensorboardX import SummaryWriter
@@ -58,9 +58,14 @@ class Trainer:
 	def _run_epoch(self, epoch):
 		self.netG = self.netG.train()
 		losses_G = []
-		losses_vgg = []
-		losses_adv = []
+		losses_G_1 = []
+		losses_G_2 = []
+		losses_vgg_1 = []
+		losses_vgg_2 = []
+		losses_adv_1 = []
+		losses_adv_2 = []
 		psnrs = []
+		ssim = []
 
 		datasets = {"batches_per_epoch":[], "dataiterators":[]}
 		for type, dataset in self.train_dataset.items():
@@ -68,52 +73,72 @@ class Trainer:
 			datasets["batches_per_epoch"].append(batches_per_epoch)
 			datasets["dataiterators"].append(iter(dataset))
 
-		# TODO: check what going on
 		for param_group in self.optimizer_G.param_groups:
 			lr = param_group['lr']
-
+		#TODO: max/min iter tqdm
 		tq = tqdm.tqdm(range(max(datasets["batches_per_epoch"])))
 		tq.set_description('Epoch {}, lr {}'.format(epoch, lr))
-		i = 0
-		for j in tq:
+		#i = 0
+		for i in tq:
+			loss_G = 0
 			for idx, dataset in enumerate(datasets["dataiterators"]):
 				data = next(dataset)
 				inputs, targets = self.model.get_input(data)
-				outputs = self.netG(inputs)
+				if idx == 0:
+					outputs, _ = self.netG(inputs)
+					for _ in range(config['D_update_ratio']):
+						self.optimizer_D1.zero_grad()
+						loss_D1 = config['loss']['adv'] * self.criterionD(self.netD1, outputs, targets)
+						loss_D1.backward(retain_graph=True)
+						self.optimizer_D1.step()
+					loss_adv = self.criterionD.get_g_loss(self.netD1, outputs)
+					loss_content = self.criterionG(outputs, targets)
+					losses_adv_1.append(loss_adv.item())
+					losses_vgg_1.append(loss_content.item())
+					lg1 = loss_content + config['loss']['adv'] * loss_adv
+					losses_G_1.append(lg1.item())
 
-				for _ in range(config['D_update_ratio']):
-					self.optimizer_D.zero_grad()
-					loss_D = self.criterionD(self.netD, outputs, targets)
-					loss_D.backward(retain_graph=True)
-					self.optimizer_D.step()
+				else:
+					_, outputs = self.netG(inputs)
+					for _ in range(config['D_update_ratio']):
+						self.optimizer_D2.zero_grad()
+						loss_D2 = config['loss']['adv'] * self.criterionD(self.netD2, outputs, targets)
+						loss_D2.backward(retain_graph=True)
+						self.optimizer_D2.step()
+					loss_adv = self.criterionD.get_g_loss(self.netD2, outputs)
+					loss_content = self.criterionG(outputs, targets)
+					losses_adv_2.append(loss_adv.item())
+					losses_vgg_2.append(loss_content.item())
+					lg2 = loss_content + config['loss']['adv'] * loss_adv
+					losses_G_2.append(lg2.item())
 
 				self.optimizer_G.zero_grad()
-				loss_content = self.criterionG(outputs, targets)
-				loss_adv = self.criterionD.get_g_loss(self.netD, outputs)
-				loss_G = config['loss']['cont'] * loss_content + loss_adv
-				loss_G.backward()
-				self.optimizer_G.step()
-				losses_G.append(loss_G.item())
-				losses_vgg.append(loss_content.item())
-				losses_adv.append(loss_adv.item())
-				curr_psnr = self.model.get_acc(outputs, targets)
+				loss_G += loss_content + config['loss']['adv'] * loss_adv
+
+			loss_G.backward()
+			self.optimizer_G.step()
+			#losses_G.append(loss_G.item())
+				curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
 				psnrs.append(curr_psnr)
+				ssim.append(curr_ssim)
 				mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
 				mean_loss_vgg = np.mean(losses_vgg[-REPORT_EACH:])
 				mean_loss_adv = np.mean(losses_adv[-REPORT_EACH:])
 				mean_psnr = np.mean(psnrs[-REPORT_EACH:])
+				mean_ssim = np.mean(ssim[-REPORT_EACH:])
 				if i % 100 == 0:
 					writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
 					writer.add_scalar('Train_G_Loss_vgg', mean_loss_vgg, i + (batches_per_epoch * epoch))
 					writer.add_scalar('Train_G_Loss_adv', mean_loss_adv, i + (batches_per_epoch * epoch))
 					writer.add_scalar('Train_PSNR', mean_psnr, i + (batches_per_epoch * epoch))
+					writer.add_scalar('Train_SSIM', mean_ssim, i + (batches_per_epoch * epoch))
 					writer.add_image('output', outputs)
 					writer.add_image('target', targets)
 					self.model.visualize_data(writer, data, outputs, i + (batches_per_epoch * epoch))
-			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, outputs, targets))
-			i += 1
-		tq.close()
-		return np.mean(losses_G)
+				tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim, outputs, targets))
+				#i += 1
+			tq.close()
+			return np.mean(losses_G)
 
 
 
@@ -199,20 +224,27 @@ class Trainer:
 		return scheduler
 
 	def _init_params(self):
-		dict_for_G, self.netD = get_nets(self.config['model'])
-		self.decoder1 = dict_for_G['decoder1']
-		self.decoder2 = dict_for_G['decoder2']
-		self.encoder = dict_for_G['encoder']
-		self.decoder1.cuda()
-		self.decoder2.cuda()
-		self.encoder.cuda()
-		self.netD.cuda()
+		self.netG, dict_for_D = get_nets_multitask(self.config['model'])
+		# self.decoder1 = dict_for_G['decoder1']
+		# self.decoder2 = dict_for_G['decoder2']
+		# self.encoder = dict_for_G['encoder']
+		self.netD1 = dict_for_D['discr1']
+		self.nedD2 = dict_for_D['discr2']
+		# self.decoder1.cuda()
+		# self.decoder2.cuda()
+		# self.encoder.cuda()
+		self.netG.cuda()
+		self.netD1.cuda()
+		self.netD2.cuda()
 		self.model = get_model(self.config['model'])
 		self.criterionG, self.criterionD = get_loss(self.config['model'])
 		self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
-		self.optimizer_D = self._get_optim(self.netD, self.config['optimizer']['lr_D'])
+		self.optimizer_D1 = self._get_optim(self.netD1, self.config['optimizer']['lr_D'])
+		self.optimizer_D2 = self._get_optim(self.netD2, self.config['optimizer']['lr_D'])
 		self.scheduler_G = self._get_scheduler(self.optimizer_G)
-		self.scheduler_D = self._get_scheduler(self.optimizer_D)
+		self.scheduler_D1 = self._get_scheduler(self.optimizer_D1)
+		self.scheduler_D2 = self._get_scheduler(self.optimizer_D2)
+
 
 
 if __name__ == '__main__':
