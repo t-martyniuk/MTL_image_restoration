@@ -32,31 +32,26 @@ class Trainer:
 	def train(self):
 		self._init_params()
 		for epoch in range(0, config['num_epochs']):
-			if (epoch == self.warmup_epochs) and not(self.warmup_epochs == 0):
-				self.netG.module.unfreeze()
-				self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
-				self.scheduler_G = self._get_scheduler(self.optimizer_G)
+			# if (epoch == self.warmup_epochs) and not(self.warmup_epochs == 0):
+			# 	self.netG.module.unfreeze()
+			# 	self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
+			# 	self.scheduler_G = self._get_scheduler(self.optimizer_G)
 
 			train_loss = self._run_epoch(epoch)
-			val_loss, val_psnr = self._validate(epoch)
+			val_loss, val_psnr, val_ssim = self._validate(epoch)
 			self.scheduler_G.step()
 
 			val_metric = val_psnr
 
-			if val_metric > self.best_metric:
-				self.best_metric = val_metric
-				torch.save({
-					'model': self.netG.state_dict()
-				}, 'best_{}.h5'.format(self.config['experiment_desc']))
-			torch.save({
-				'model': self.netG.state_dict()
-			}, 'last_{}.h5'.format(self.config['experiment_desc']))
+			# if val_metric > self.best_metric:
+			# 	self.best_metric = val_metric
+			# 	torch.save({'model': self.netG.state_dict()}, 'best_{}.h5'.format(self.config['experiment_desc']))
+			# torch.save({'model': self.netG.state_dict()}, 'last_{}.h5'.format(self.config['experiment_desc']))
 			print(('val_loss={}, val_metric={}, best_metric={}\n'.format(val_loss, val_metric, self.best_metric)))
-			logging.debug("Experiment Name: %s, Epoch: %d, Train Loss: %.3f, Val Accuracy: %.3f, Val Loss: %.3f, Best Loss: %.3f" % (
+			logging.debug("Experiment Name: %s, Epoch: %d, Train Loss: %.3f, Val Loss: %.3f, Val PSNR: %.3f, Best PSNR: %.3f" % (
 				self.config['experiment_desc'], epoch, train_loss, val_loss, val_metric, self.best_metric))
 
 	def _run_epoch(self, epoch):
-		# self.netG = self.netG.train()
 		losses_G = []
 		losses_G_1 = []
 		losses_G_2 = []
@@ -107,6 +102,9 @@ class Trainer:
 					mean_psnr_1 = np.mean(psnrs_1[-REPORT_EACH:])
 					mean_ssim_1 = np.mean(ssims_1[-REPORT_EACH:])
 					mean_loss_G_1 = np.mean(losses_G_1[-REPORT_EACH:])
+					if i % 100 == 0:
+						writer.add_image('output_1', outputs)
+						writer.add_image('target_1', targets)
 
 
 
@@ -131,6 +129,9 @@ class Trainer:
 					mean_psnr_2 = np.mean(psnrs_2[-REPORT_EACH:])
 					mean_ssim_2 = np.mean(ssims_2[-REPORT_EACH:])
 					mean_loss_G_2 = np.mean(losses_G_2[-REPORT_EACH:])
+					if i % 100 == 0:
+						writer.add_image('output_2', outputs)
+						writer.add_image('target_2', targets)
 
 				self.optimizer_G.zero_grad()
 				loss_G += loss_content + config['loss']['adv'] * loss_adv
@@ -141,16 +142,21 @@ class Trainer:
 
 			mean_loss_G = np.mean(losses_G[-REPORT_EACH:])
 
-			# if i % 100 == 0:
-			# 	writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
-			# 	writer.add_scalar('Train_G_Loss_vgg_1', mean_loss_vgg_1, i + (batches_per_epoch * epoch))
-			# 	writer.add_scalar('Train_G_Loss_adv_1', mean_loss_adv_1, i + (batches_per_epoch * epoch))
-			# 	writer.add_scalar('Train_PSNR_1', mean_psnr_1, i + (batches_per_epoch * epoch))
-			# 	writer.add_scalar('Train_SSIM_1', mean_ssim_1, i + (batches_per_epoch * epoch))
-			# 	writer.add_image('output', outputs)
-			# 	writer.add_image('target', targets)
-			# 	self.model.visualize_data(writer, data, outputs, i + (batches_per_epoch * epoch))
-			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr_1, mean_ssim_1))
+			if i % 100 == 0:
+				writer.add_scalar('Train_G_Loss', mean_loss_G, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_G_Loss_1', mean_loss_G_1, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_G_Loss_vgg_1', mean_loss_vgg_1, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_G_Loss_adv_1', mean_loss_adv_1, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_PSNR_1', mean_psnr_1, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_SSIM_1', mean_ssim_1, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_G_Loss_2', mean_loss_G_2, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_G_Loss_vgg_2', mean_loss_vgg_2, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_G_Loss_adv_2', mean_loss_adv_2, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_PSNR_2', mean_psnr_2, i + (batches_per_epoch * epoch))
+				writer.add_scalar('Train_SSIM_2', mean_ssim_2, i + (batches_per_epoch * epoch))
+
+				self.model.visualize_data(writer, data, i + (batches_per_epoch * epoch))
+			tq.set_postfix(loss=self.model.get_loss(mean_loss_G_1, mean_psnr_1, mean_ssim_1))
 				#i += 1
 		tq.close()
 		return np.mean(losses_G)
@@ -159,9 +165,13 @@ class Trainer:
 
 
 	def _validate(self, epoch):
-		self.netG = self.netG.eval()
-		losses = []
-		psnrs = []
+		losses_G_1 = []
+		psnrs_1 = []
+		ssims_1 = []
+		losses_G_2 = []
+		psnrs_2 = []
+		ssims_2 = []
+		losses_G = []
 
 		datasets = {"batches_per_epoch":[], "dataiterators":[]}
 		for type, dataset in self.val_dataset.items():
@@ -172,24 +182,54 @@ class Trainer:
 		tq = tqdm.tqdm(range(max(datasets["batches_per_epoch"])))
 		tq.set_description('Validation')
 		for j in tq:
-			for dataset in datasets["dataiterators"]:
-
+			loss_G = 0
+			for idx, dataset in enumerate(datasets["dataiterators"]):
 				data = next(dataset)
 				inputs, targets = self.model.get_input(data)
-				outputs = self.netG(inputs)
-				loss_content = self.criterionG(outputs, targets)
-				loss_G = config['loss']['cont'] * loss_content + self.criterionD.get_g_loss(self.netD, outputs)
-				losses.append(loss_G.item())
-				curr_psnr = self.model.get_acc(outputs, targets)
-				psnrs.append(curr_psnr)
-		val_loss = np.mean(losses)
-		val_psnr = np.mean(psnrs)
+				if idx == 0:
+					outputs = self.decoder1(self.encoder(inputs))
+					loss_adv = self.criterionD.get_g_loss(self.netD1, outputs)
+					loss_content = self.criterionG(outputs, targets)
+					lg1 = loss_content + config['loss']['adv'] * loss_adv
+					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
+					losses_G_1.append(lg1.item())
+					psnrs_1.append(curr_psnr)
+					ssims_1.append(curr_ssim)
+					writer.add_image('val_output_1', outputs)
+					writer.add_image('val_target_1', targets)
+				else:
+					outputs = self.decoder2(self.encoder(inputs))
+					loss_adv = self.criterionD.get_g_loss(self.netD2, outputs)
+					loss_content = self.criterionG(outputs, targets)
+					lg2 = loss_content + config['loss']['adv'] * loss_adv
+					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
+					losses_G_1.append(lg2.item())
+					psnrs_2.append(curr_psnr)
+					ssims_2.append(curr_ssim)
+					writer.add_image('val_output_2', outputs)
+					writer.add_image('val_target_2', targets)
+
+			loss_G += loss_content + config['loss']['adv'] * loss_adv
+			losses_G.append(loss_G)
+
+		val_loss_1 = np.mean(losses_G_1)
+		val_psnr_1 = np.mean(psnrs_1)
+		val_ssim_1 = np.mean(ssims_1)
+		val_loss_2 = np.mean(losses_G_2)
+		val_psnr_2 = np.mean(psnrs_2)
+		val_ssim_2 = np.mean(ssims_2)
+		val_loss = np.mean(losses_G)
+
 		tq.close()
+		writer.add_scalar('Validation_Loss_1', val_loss_1, epoch)
+		writer.add_scalar('Validation_PSNR_1', val_psnr_1, epoch)
+		writer.add_scalar('Validation_SSIM_1', val_ssim_1, epoch)
+		writer.add_scalar('Validation_Loss_2', val_loss_2, epoch)
+		writer.add_scalar('Validation_PSNR_2', val_psnr_2, epoch)
+		writer.add_scalar('Validation_SSIM_2', val_ssim_2, epoch)
 		writer.add_scalar('Validation_Loss', val_loss, epoch)
-		writer.add_scalar('Validation_PSNR', val_psnr, epoch)
-		writer.add_image('output', outputs)
-		writer.add_image('target', targets)
-		return val_loss, val_psnr
+
+		return val_loss, 0.5 * (val_psnr_1 + val_psnr_2), 0.5 *(val_ssim_1 + val_ssim_2)
 
 	def _get_dataset(self, config, filename):
 		data_loader = CreateDataLoader(config, filename)

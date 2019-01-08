@@ -37,7 +37,7 @@ class DeblurModel(nn.Module):
     def get_loss(self, mean_loss, mean_psnr, mean_ssim):
         return '{:.3f}; psnr={}; ssim={}'.format(mean_loss, mean_psnr, mean_ssim)
 
-    def visualize_data(self, writer, data, outputs, niter):
+    def visualize_data(self, writer, data, niter):
         images = vutils.make_grid(data['A']) + 1 / 2.0
         writer.add_image('Images', images, niter)
 

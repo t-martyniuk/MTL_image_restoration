@@ -104,7 +104,7 @@ class Trainer:
 				writer.add_scalar('Train_SSIM', mean_ssim, i + (batches_per_epoch * epoch))
 				writer.add_image('output', outputs)
 				writer.add_image('target', targets)
-				self.model.visualize_data(writer, data, outputs,  i + (batches_per_epoch * epoch))
+				self.model.visualize_data(writer, data,  i + (batches_per_epoch * epoch))
 			tq.set_postfix(loss=self.model.get_loss(mean_loss_G, mean_psnr, mean_ssim))
 			i += 1
 		tq.close()
