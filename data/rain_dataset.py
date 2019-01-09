@@ -8,7 +8,7 @@ from data.base_dataset import BaseDataset
 from data.image_folder import make_dataset_several
 import os
 
-class HazeDataset(BaseDataset):
+class RainDataset(BaseDataset):
     def initialize(self, config, filename):
         self.config = config
         self.filename = filename
@@ -16,7 +16,7 @@ class HazeDataset(BaseDataset):
 
         subfolders = os.listdir(os.path.join(self.root, filename))
         subfolders_slice = subfolders
-        self.dirs_A = [os.path.join(self.root, filename, subfolder, 'hazy') for subfolder in subfolders_slice]
+        self.dirs_A = [os.path.join(self.root, filename, subfolder, 'rain') for subfolder in subfolders_slice]
 
         def change_subpath(path, what_to_change, change_to):
             p = pathlib.Path(path)
@@ -25,11 +25,11 @@ class HazeDataset(BaseDataset):
             return new_path
 
         self.A_paths = make_dataset_several(self.dirs_A)
-        self.B_paths = [str(change_subpath(x, 'hazy', 'clear')) for x in self.A_paths]
+        self.B_paths = [str(change_subpath(x, 'rain', 'clean')) for x in self.A_paths]
 
         self.A_paths = sorted(self.A_paths)
         self.B_paths = sorted(self.B_paths)
-        print('haze')
+        print('rain')
         print(len(self.A_paths))
         print(self.B_paths[0])
         self.A_size = len(self.A_paths)
@@ -71,4 +71,4 @@ class HazeDataset(BaseDataset):
         return max(self.A_size, self.B_size)
 
     def name(self):
-        return 'HazeDataset'
+        return 'RainDataset'

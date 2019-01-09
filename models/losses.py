@@ -182,14 +182,23 @@ class DiscLossWGANGP(DiscLossLS):
 
 def get_loss(model):
 
-	if model['content_loss'] == 'perceptual':
-		content_loss = PerceptualLoss()
-		content_loss.initialize(nn.MSELoss())
-	elif model['content_loss'] == 'l1':
-		content_loss = ContentLoss()
-		content_loss.initialize(nn.L1Loss())
+	if model['fea_loss'] == 'perceptual':
+		fea_loss = PerceptualLoss()
+		fea_loss.initialize(nn.MSELoss())
+	elif model['fea_loss'] == 'l1':
+		fea_loss = ContentLoss()
+		fea_loss.initialize(nn.L1Loss())
 	else:
-		raise ValueError("ContentLoss [%s] not recognized." % model['content_loss'])
+		raise ValueError("ContentLoss [%s] not recognized." % model['fea_loss'])
+
+	if model['pixel_loss'] == 'l1':
+		pixel_loss = ContentLoss()
+		pixel_loss.initialize(nn.L1Loss())
+	elif model['pixel_loss'] == 'l2':
+		pixel_loss = ContentLoss()
+		pixel_loss.initialize(nn.L1Loss())
+	else:
+		raise ValueError("PixelLoss [%s] not recognized." % model['pixel_loss'])
 
 	if model['disc_loss'] == 'wgan-gp':
 		disc_loss = DiscLossWGANGP()
@@ -199,4 +208,4 @@ def get_loss(model):
 		disc_loss = DiscLoss()
 	else:
 		raise ValueError("GAN Loss [%s] not recognized." % model['disc_loss'])
-	return content_loss, disc_loss
+	return fea_loss, pixel_loss, disc_loss

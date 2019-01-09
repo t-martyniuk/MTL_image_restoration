@@ -302,30 +302,42 @@ def get_nets(model_config):
     return nn.DataParallel(model_g), nn.DataParallel(model_d)
 
 
-def get_nets_multitask(model_config):
+def get_nets_multitask(model_config, config):
+    num_of_tasks = len(config['datasets'])
     discriminator_name = model_config['d_name']
     if discriminator_name == 'n_layers':
-        model_d1 = NLayerDiscriminator(n_layers=model_config['d_layers'],
+        discs = []
+        for _ in range(num_of_tasks):
+            discs.append(NLayerDiscriminator(n_layers=model_config['d_layers'],
                                        norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                       use_sigmoid=(model_config['disc_loss'] == 'gan'))
-        model_d2 = NLayerDiscriminator(n_layers=model_config['d_layers'],
-                                       norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                       use_sigmoid=(model_config['disc_loss'] == 'gan'))
+                                       use_sigmoid=(model_config['disc_loss'] == 'gan')))
+        discs = [nn.DataParallel(x) for x in discs]
+        # model_d1 = NLayerDiscriminator(n_layers=model_config['d_layers'],
+        #                                norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+        #                                use_sigmoid=(model_config['disc_loss'] == 'gan'))
+        # model_d2 = NLayerDiscriminator(n_layers=model_config['d_layers'],
+        #                                norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
+        #                                use_sigmoid=(model_config['disc_loss'] == 'gan'))
     else:
         raise ValueError("Discriminator Network [%s] not recognized." % discriminator_name)
 
     generator_name = model_config['g_name']
     if generator_name == 'resnet':
+        decs = []
         encoder = ResNetEncoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
                                 use_dropout=model_config['dropout'],
                                 n_blocks=model_config['blocks'])
-        decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
-        decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        for _ in range(num_of_tasks):
+            decs.append(ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer'])))
+        decs = [nn.DataParallel(x) for x in decs]
+        # decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        # decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
     else:
         raise ValueError("Generator Network [%s] not recognized." % generator_name)
-    return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
-            'decoder2': nn.DataParallel(decoder2)}, \
-           {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
+    # return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),
+    #         'decoder2': nn.DataParallel(decoder2)}, \
+    #        {'discr1': nn.DataParallel(model_d1), 'discr2': nn.DataParallel(model_d2)}
+    return {'encoder': nn.DataParallel(encoder), 'decoders': decs}, discs
 
 
 

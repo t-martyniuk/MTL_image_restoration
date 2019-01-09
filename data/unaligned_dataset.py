@@ -34,6 +34,9 @@ class UnalignedDataset(BaseDataset):
 
         self.A_paths = sorted(self.A_paths)
         self.B_paths = sorted(self.B_paths)
+        print('blur')
+        print(len(self.A_paths))
+        print(self.B_paths[0])
         self.A_size = len(self.A_paths)
         self.B_size = len(self.B_paths)
 
@@ -61,7 +64,7 @@ class UnalignedDataset(BaseDataset):
         B_img = cv2.cvtColor(B_img, cv2.COLOR_BGR2RGB)
         augmented = self.transform(image=A_img, mask=B_img)
 
-        A_img = self.input_norm(image=augmented['image'])['image']
+        A_img = self.output_norm(image=augmented['image'])['image']
         B_img = self.output_norm(image=augmented['mask'])['image']
 
         A = torch.from_numpy(np.transpose(A_img, (2, 0, 1)).astype('float32'))
@@ -73,4 +76,4 @@ class UnalignedDataset(BaseDataset):
         return max(self.A_size, self.B_size)
 
     def name(self):
-        return 'UnalignedDataset'
+        return 'BlurDataset'

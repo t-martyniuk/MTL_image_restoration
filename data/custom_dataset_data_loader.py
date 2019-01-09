@@ -10,6 +10,9 @@ def CreateDataset(config, filename):
     elif config['dataset']['mode'] == 'haze':
         from data.haze_dataset import HazeDataset
         dataset = HazeDataset()
+    elif config['dataset']['mode'] == 'rain':
+        from data.rain_dataset import RainDataset
+        dataset = RainDataset()
     else:
         raise ValueError("Dataset [%s] not recognized." % config['dataset_mode'])
 
