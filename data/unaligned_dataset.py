@@ -19,9 +19,13 @@ class UnalignedDataset(BaseDataset):
         self.filename = filename
         self.root = config['dataroot_train']
 
-        subfolders = os.listdir(os.path.join(self.root, filename))
+        # subfolders = os.listdir(os.path.join(self.root, filename))
+        # subfolders_slice = subfolders
+        # self.dirs_A = [os.path.join(self.root, filename, subfolder, 'blur') for subfolder in subfolders_slice]
+
+        subfolders = os.listdir(os.path.join(self.root, filename, 'blur'))
         subfolders_slice = subfolders
-        self.dirs_A = [os.path.join(self.root, filename, subfolder, 'blur') for subfolder in subfolders_slice]
+        self.dirs_A = [os.path.join(self.root, filename, 'blur', subfolder) for subfolder in subfolders_slice]
 
         def change_subpath(path, what_to_change, change_to):
             p = pathlib.Path(path)
@@ -61,7 +65,11 @@ class UnalignedDataset(BaseDataset):
         A_img = cv2.imread(A_path)
         A_img = cv2.cvtColor(A_img, cv2.COLOR_BGR2RGB)
         B_img = cv2.imread(B_path)
-        B_img = cv2.cvtColor(B_img, cv2.COLOR_BGR2RGB)
+        try:
+            B_img = cv2.cvtColor(B_img, cv2.COLOR_BGR2RGB)
+        except:
+            cv2.imwrite('bad_image.png', B_img)
+
         augmented = self.transform(image=A_img, mask=B_img)
 
         A_img = self.output_norm(image=augmented['image'])['image']

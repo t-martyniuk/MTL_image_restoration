@@ -31,30 +31,35 @@ class Trainer:
 	def train(self):
 		self._init_params()
 		for epoch in range(0, config['num_epochs']):
-			try:
 				# if (epoch == self.warmup_epochs) and not(self.warmup_epochs == 0):
 				# 	self.netG.module.unfreeze()
 				# 	self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
 				# 	self.scheduler_G = self._get_scheduler(self.optimizer_G)
+			train_loss = self._run_epoch(epoch)
 
-				train_loss = self._run_epoch(epoch)
-				val_loss, val_psnr, val_ssim = self._validate(epoch)
-				self.scheduler_G.step()
+			val_loss, val_psnr, val_ssim = self._validate(epoch)
+			self.scheduler_G.step()
 
-				val_metric = val_psnr
+			val_metric = val_psnr
 
-				# if val_metric > self.best_metric:
-				# 	self.best_metric = val_metric
-				# 	torch.save({'model': self.netG.state_dict()}, 'best_{}.h5'.format(self.config['experiment_desc']))
-				# torch.save({'model': self.netG.state_dict()}, 'last_{}.h5'.format(self.config['experiment_desc']))
-				print(('val_loss={}, val_metric={}, best_metric={}\n'.format(val_loss, val_metric, self.best_metric)))
-				logging.debug("Experiment Name: %s, Epoch: %d, Train Loss: %.3f, Val Loss: %.3f, Val PSNR: %.3f, Best PSNR: %.3f" % (
-					self.config['experiment_desc'], epoch, train_loss, val_loss, val_metric, self.best_metric))
-			except StopIteration:
-				pass
+			dict_models = {'encoder': self.encoder.state_dict()}
+			for i in range(num_of_tasks):
+				dict_models['decoder' + str(i)] = self.decoders[i].state_dict()
+
+			if val_metric > self.best_metric:
+				self.best_metric = val_metric
+
+				torch.save(dict_models, 'best_{}.h5'.format(self.config['experiment_desc']))
+			torch.save(dict_models, 'last_{}.h5'.format(self.config['experiment_desc']))
+			print(('val_loss={}, val_psnr={}, val_ssim={},'
+				   ' best_psnr={}\n'.format(val_loss, val_psnr, val_ssim, self.best_metric)))
+			logging.debug("Experiment Name: %s, Epoch: %d, Train Loss: %.3f, Val Loss: %.3f, Val PSNR: %.3f, Best PSNR: %.3f" % (
+				self.config['experiment_desc'], epoch, train_loss, val_loss, val_metric, self.best_metric))
+
 
 
 	def _run_epoch(self, epoch):
+
 		losses_G = []
 		losses_G_i = {}
 		losses_vgg_i = {}
@@ -102,7 +107,10 @@ class Trainer:
 			loss_G = 0
 			for idx, dataset in enumerate(datasets["dataiterators"]):
 				name = mapping[str(idx)]
-				data = next(dataset)
+				try:
+					data = next(dataset)
+				except StopIteration:
+					continue
 				inputs, targets = self.model.get_input(data)
 				outputs = self.decoders[idx](self.encoder(inputs))
 				for _ in range(config['D_update_ratio']):
@@ -159,11 +167,13 @@ class Trainer:
 			tq.set_postfix(loss=self.model.get_loss(mean_loss_G,
 													np.mean(list(mean_psnr_i.values())),
 													np.mean(list(mean_ssim_i.values()))))
+
 		tq.close()
 		return np.mean(losses_G)
 
 
 	def _validate(self, epoch):
+
 		losses_G = []
 		losses_G_i = {}
 		psnrs_i = {}
@@ -190,27 +200,35 @@ class Trainer:
 
 		tq = tqdm.tqdm(range(batches_per_epoch))
 
+		print('Validation')
 		tq.set_description('Validation')
-		for _ in tq:
-			loss_G = 0
-			for idx, dataset in enumerate(datasets["dataiterators"]):
-				name = mapping[str(idx)]
-				data = next(dataset)
-				inputs, targets = self.model.get_input(data)
-				outputs = self.decoders[idx](self.encoder(inputs))
-				loss_adv = self.criterionD.get_g_loss(self.netsD[idx], outputs)
-				loss_content = self.criterionG(outputs, targets)
-				loss_pix = self.criterionG_pix(outputs, targets)
-				lg1 = loss_content + config['loss']['l1'] * loss_pix + config['loss']['adv'] * loss_adv
-				losses_G_i[name].append(lg1.item())
-				curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
-				psnrs_i[name].append(curr_psnr)
-				ssims_i[name].append(curr_ssim)
+		with torch.no_grad():
+			for _ in tq:
+				loss_G = 0
+				for idx, dataset in enumerate(datasets["dataiterators"]):
+					name = mapping[str(idx)]
+					try:
+						data = next(dataset)
+					except StopIteration:
+						continue
+					#print("\n=========", data['A'].size())
+					inputs, targets = self.model.get_input(data)
+					outputs = self.decoders[idx](self.encoder(inputs))
+					loss_adv = self.criterionD.get_g_loss(self.netsD[idx], outputs)
+					loss_content = self.criterionG(outputs, targets)
+					loss_pix = self.criterionG_pix(outputs, targets)
+					lg1 = loss_content + config['loss']['l1'] * loss_pix + config['loss']['adv'] * loss_adv
+					losses_G_i[name].append(lg1.item())
+					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
+					psnrs_i[name].append(curr_psnr)
+					ssims_i[name].append(curr_ssim)
 
-				loss_G += lg1
-				losses_G.append(loss_G)
+					loss_G += lg1
+					losses_G.append(loss_G.item())
+
 
 		for name in losses_G_i.keys():
+			print('entered losses_G_i keys()')
 			val_psnr[name] = np.mean(psnrs_i[name])
 			val_ssim[name] = np.mean(ssims_i[name])
 			val_loss_G[name] = np.mean(losses_G_i[name])
@@ -223,7 +241,7 @@ class Trainer:
 
 		tq.close()
 
-		return val_loss, np.mean(val_psnr.items()), np.mean(val_ssim.items())
+		return val_loss, np.mean(list(val_psnr.values())), np.mean(list(val_ssim.values()))
 
 	def _get_dataset(self, config, filename):
 		data_loader = CreateDataLoader(config, filename)

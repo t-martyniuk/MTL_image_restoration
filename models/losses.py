@@ -21,6 +21,44 @@ class ContentLoss():
 	def __call__(self, fakeIm, realIm):
 		return self.get_loss(fakeIm, realIm)
 
+
+def cx_loss(x, y):
+	h = 0.5
+	assert x.size() == y.size()
+	N, C, H, W = x.size()  # e.g., 10 x 512 x 14 x 14. In this case, the number of points is 196 (14x14).
+
+	y_mu = y.mean(3).mean(2).mean(0).reshape(1, -1, 1, 1)
+
+	x_centered = x - y_mu
+	y_centered = y - y_mu
+	x_normalized = x_centered / torch.norm(x_centered, p=2, dim=1, keepdim=True)
+	y_normalized = y_centered / torch.norm(y_centered, p=2, dim=1, keepdim=True)
+
+	# The equation at the bottom of page 6 in the paper
+	# Vectorized computation of cosine similarity for each pair of x_i and y_j
+	x_normalized = x_normalized.reshape(N, C, -1)  # (N, C, H*W)
+	y_normalized = y_normalized.reshape(N, C, -1)  # (N, C, H*W)
+	cosine_sim = torch.bmm(x_normalized.transpose(1, 2), y_normalized)  # (N, H*W, H*W)
+
+	d = 1 - cosine_sim  # (N, H*W, H*W)  d[n, i, j] means d_ij for n-th data
+	d_min, _ = torch.min(d, dim=2, keepdim=True)  # (N, H*W, 1)
+
+	# Eq (2)
+	d_tilde = d / (d_min + 1e-5)
+
+	# Eq(3)
+	w = torch.exp((1 - d_tilde) / h)
+
+	# Eq(4)
+	cx_ij = w / torch.sum(w, dim=2, keepdim=True)  # (N, H*W, H*W)
+
+	# Eq (1)
+	cx = torch.mean(torch.max(cx_ij, dim=1)[0], dim=1)  # (N, )
+	loss = torch.mean(-torch.log(cx + 1e-5))
+
+	return loss
+
+
 class PerceptualLoss():
 	
 	def contentFunc(self):
@@ -48,6 +86,41 @@ class PerceptualLoss():
 		f_real = self.contentFunc.forward(realIm)
 		f_real_no_grad = f_real.detach()
 		loss = self.criterion(f_fake, f_real_no_grad) + 0.5 * nn.L1Loss()(fakeIm, realIm)
+		#loss = self.criterion(f_fake, f_real_no_grad)
+		return torch.mean(loss)
+
+	def __call__(self, fakeIm, realIm):
+		return self.get_loss(fakeIm, realIm)
+
+
+class PerceptualLosses():
+	def contentFunc(self):
+		conv_3_3_layer = 14
+		cnn = models.vgg19(pretrained=True).features
+		cnn = cnn.cuda()
+		model = nn.Sequential()
+		model = model.cuda()
+		model = model.eval()
+		for i, layer in enumerate(list(cnn)):
+			model.add_module(str(i), layer)
+			if i == conv_3_3_layer:
+				break
+		return model
+
+	def initialize(self, loss):
+		with torch.no_grad():
+			self.criterion = loss
+			self.contentFunc = self.contentFunc()
+
+	def get_loss(self, fakeIm, realIm):
+		# print()
+		# print(fakeIm.size(), realIm.size())
+		f_fake = self.contentFunc.forward(fakeIm)
+		f_real = self.contentFunc.forward(realIm)
+		f_real_no_grad = f_real.detach()
+		loss = self.criterion(f_fake, f_real_no_grad) + 0.5 * nn.L1Loss()(fakeIm, realIm) + \
+			   0.5 * nn.MSELoss()(f_fake, f_real_no_grad)
+		# loss = self.criterion(f_fake, f_real_no_grad)
 		return torch.mean(loss)
 
 	def __call__(self, fakeIm, realIm):
@@ -185,9 +258,16 @@ def get_loss(model):
 	if model['fea_loss'] == 'perceptual':
 		fea_loss = PerceptualLoss()
 		fea_loss.initialize(nn.MSELoss())
-	elif model['fea_loss'] == 'l1':
-		fea_loss = ContentLoss()
-		fea_loss.initialize(nn.L1Loss())
+	# elif model['fea_loss'] == 'l1':
+	# 	fea_loss = ContentLoss()
+	# 	fea_loss.initialize(nn.L1Loss())
+	elif model['fea_loss'] == 'cx':
+		fea_loss = PerceptualLoss()
+		fea_loss.initialize(cx_loss)
+	elif model['fea_loss'] == 'both':
+		fea_loss = PerceptualLosses()
+		fea_loss.initialize(cx_loss)
+
 	else:
 		raise ValueError("ContentLoss [%s] not recognized." % model['fea_loss'])
 
@@ -196,7 +276,7 @@ def get_loss(model):
 		pixel_loss.initialize(nn.L1Loss())
 	elif model['pixel_loss'] == 'l2':
 		pixel_loss = ContentLoss()
-		pixel_loss.initialize(nn.L1Loss())
+		pixel_loss.initialize(nn.MSELoss())
 	else:
 		raise ValueError("PixelLoss [%s] not recognized." % model['pixel_loss'])
 
