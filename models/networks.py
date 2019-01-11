@@ -32,7 +32,7 @@ def get_norm_layer(norm_type='instance'):
 # Code and idea originally from Justin Johnson's architecture.
 # https://github.com/jcjohnson/fast-neural-style/
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc=3, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, use_parallel = True, learn_residual = True, padding_type='reflect'):
+    def __init__(self, input_nc=3, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, use_parallel=True, learn_residual=True, padding_type='reflect'):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -185,19 +185,10 @@ def get_nets(model_config):
                                   n_blocks=model_config['blocks'],
                                   learn_residual=model_config['learn_residual'])
     elif generator_name == 'fpn':
-        res = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                                  use_dropout=model_config['dropout'],
-                                  n_blocks=6,
-                                  learn_residual=False)
         model_g = FPNNet(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                         pretrained=model_config['pretrained'],
-                         resnet=res)
+                         pretrained=model_config['pretrained'])
     elif generator_name == 'fpn_inception':
-        res = ResnetGenerator(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']),
-                              use_dropout=model_config['dropout'],
-                              n_blocks=6,
-                              learn_residual=False)
-        model_g = FPNInception(res, norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+        model_g = FPNInception(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
     elif generator_name == 'fpn_dense':
         model_g = FPNDense()
     elif generator_name == 'unet_seresnext':

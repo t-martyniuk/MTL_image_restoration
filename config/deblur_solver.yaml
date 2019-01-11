@@ -1,12 +1,12 @@
 ---
 project: deblur_gan
-experiment_desc: resnet_2019
+experiment_desc: fpn
 dataroot_train: /mnt/disks
 dataroot_val: /mnt/disks
 phase: train
 warmup_num: 0
 model:
-    g_name: resnet
+    g_name: fpn_inception
     blocks: 9
     d_name: n_layers
     d_layers: 3
@@ -17,7 +17,7 @@ model:
     pretrained: False
     norm_layer: instance
     dropout: True  
-num_epochs: 80
+num_epochs: 100
 num_workers: 4
 batch_size: 1
 image_size: [256, 256]
@@ -29,6 +29,6 @@ optimizer:
     lr: 0.0001
 scheduler:
     name: linear
-    start_epoch: 40
+    start_epoch: 50
     min_lr: 0.0000001
 

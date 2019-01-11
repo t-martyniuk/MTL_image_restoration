@@ -19,7 +19,7 @@ class FPNHead(nn.Module):
 
 class FPNInception(nn.Module):
 
-    def __init__(self, resnet, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256):
+    def __init__(self, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256):
         super().__init__()
 
         # Feature Pyramid Network (FPN) with four feature maps of resolutions
@@ -47,7 +47,7 @@ class FPNInception(nn.Module):
 
         self.final = nn.Conv2d(num_filters // 2, output_ch, kernel_size=3, padding=1)
 
-        self.resnet = resnet
+        #self.resnet = resnet
 
     def unfreeze(self):
         self.fpn.unfreeze()
@@ -69,7 +69,7 @@ class FPNInception(nn.Module):
         final = self.final(smoothed)
         res = torch.tanh(final) + x
 
-        return torch.tanh(self.resnet(res)), torch.clamp(res, min = -1,max = 1)
+        return torch.clamp(res, min = -1,max = 1)
 
 
 class FPN(nn.Module):

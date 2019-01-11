@@ -18,7 +18,7 @@ class FPNHead(nn.Module):
 
 class FPNNet(nn.Module):
 
-    def __init__(self, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256, pretrained=True, resnet=None):
+    def __init__(self, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256, pretrained=True):
         super().__init__()
 
         # Feature Pyramid Network (FPN) with four feature maps of resolutions
@@ -46,7 +46,6 @@ class FPNNet(nn.Module):
         )
 
         self.final = nn.Conv2d(num_filters // 2, output_ch, kernel_size=3, padding=1)
-        self.resnet = resnet
 
     def forward(self, x):
 
@@ -62,9 +61,10 @@ class FPNNet(nn.Module):
         smoothed = self.smooth2(smoothed)
         smoothed = nn.functional.upsample(smoothed, scale_factor=2, mode="nearest")
 
-        final = torch.tanh(self.final(smoothed))
+        final = self.final(smoothed)
+        res = torch.tanh(final) + x
 
-        return final
+        return torch.clamp(res, min=-1, max=1)
 
 
 class FPN(nn.Module):
