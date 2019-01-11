@@ -168,7 +168,6 @@ class Trainer:
 			tq.set_postfix(loss=self.model.get_loss(mean_loss_G,
 													np.mean(list(mean_psnr_i.values())),
 													np.mean(list(mean_ssim_i.values()))))
-			break
 		tq.close()
 		return np.mean(losses_G)
 
