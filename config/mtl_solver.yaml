@@ -1,6 +1,6 @@
 ---
 project: multi_task_learning
-experiment_desc: mtl14
+experiment_desc: mtl_2_2tasks
 phase: train
 warmup_num: 0
 model:
@@ -20,20 +20,24 @@ num_epochs: 80
 num_workers: 4
 datasets:
   - type: unaligned
-    batch_size: 1
+    batch_size: 2
+#    dataroot_train: /home/ml/datasets/GOPRO_Large_3840_FPS
+#    dataroot_val: /home/ml/datasets/GOPRO_Large_3840_FPS
     dataroot_train: /home/tanya/datasets/GOPRO_Large_3840_FPS
     dataroot_val: /home/tanya/datasets/GOPRO_Large_3840_FPS
     fineSize: 256
   - type: haze
     batch_size: 1
+#    dataroot_train: /home/ml/datasets/d_hazy
+#    dataroot_val: /home/ml/datasets/d_hazy
     dataroot_train: /home/tanya/datasets/d_hazy
     dataroot_val: /home/tanya/datasets/d_hazy
     fineSize: 256
-  - type: rain
-    batch_size: 1
-    dataroot_train: /home/tanya/datasets/raindrop_data
-    dataroot_val: /home/tanya/datasets/raindrop_data
-    fineSize: 256
+#  - type: rain
+#    batch_size: 1
+#    dataroot_train: /home/tanya/datasets/raindrop_data
+#    dataroot_val: /home/tanya/datasets/raindrop_data
+#    fineSize: 256
 image_size: [256, 256]
 D_update_ratio: 1
 loss:

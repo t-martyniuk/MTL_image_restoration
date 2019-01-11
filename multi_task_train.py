@@ -8,7 +8,7 @@ import cv2
 import yaml
 from schedulers import WarmRestart, LinearDecay
 import numpy as np
-from models.networks import get_nets_multitask
+from models.networks import get_nets_multitask, EncoderDecoder
 from models.losses import get_loss
 from models.models import get_model
 from tensorboardX import SummaryWriter
@@ -24,7 +24,8 @@ class Trainer:
 		self.config = config
 		self.train_dataset = self._get_datasets(config, 'train')
 		self.val_dataset = self._get_datasets(config, 'test')
-		self.best_metric = 0
+		self.best_psnr = 0
+		self.best_ssim = 0
 		self.warmup_epochs = config['warmup_num']
 
 
@@ -41,25 +42,27 @@ class Trainer:
 			self.scheduler_G.step()
 
 			val_metric = val_psnr
+			if val_ssim > self.best_ssim:
+				self.best_ssim = val_ssim
 
 			dict_models = {'encoder': self.encoder.state_dict()}
 			for i in range(num_of_tasks):
 				dict_models['decoder' + str(i)] = self.decoders[i].state_dict()
 
-			if val_metric > self.best_metric:
-				self.best_metric = val_metric
+			if val_metric > self.best_psnr:
+				self.best_psnr = val_metric
 
 				torch.save(dict_models, 'best_{}.h5'.format(self.config['experiment_desc']))
 			torch.save(dict_models, 'last_{}.h5'.format(self.config['experiment_desc']))
-			print(('val_loss={}, val_psnr={}, val_ssim={},'
-				   ' best_psnr={}\n'.format(val_loss, val_psnr, val_ssim, self.best_metric)))
-			logging.debug("Experiment Name: %s, Epoch: %d, Train Loss: %.3f, Val Loss: %.3f, Val PSNR: %.3f, Best PSNR: %.3f" % (
-				self.config['experiment_desc'], epoch, train_loss, val_loss, val_metric, self.best_metric))
+			print(('val_loss={}, val_psnr={}, val_ssim={},best_psnr={}, best_ssim={}\n'.
+				   format(val_loss, val_psnr, val_ssim, self.best_psnr, self.best_ssim)))
+			logging.debug("Experiment Name: %s, Epoch: %d, Train Loss: %.3f, Val Loss: %.3f, Val PSNR: %.3f, "
+						  "Best PSNR: %.3f, Best SSIM: %.3f" % (self.config['experiment_desc'], epoch, train_loss,
+																val_loss, val_metric, self.best_psnr, self.best_ssim))
 
 
 
 	def _run_epoch(self, epoch):
-
 		losses_G = []
 		losses_G_i = {}
 		losses_vgg_i = {}
@@ -103,16 +106,25 @@ class Trainer:
 		tq = tqdm.tqdm(range(batches_per_epoch))
 		tq.set_description('Epoch {}, lr {}'.format(epoch, lr))
 
+		flag_train = False
+
 		for i in tq:
+			if flag_train:
+				break
 			loss_G = 0
 			for idx, dataset in enumerate(datasets["dataiterators"]):
 				name = mapping[str(idx)]
 				try:
 					data = next(dataset)
 				except StopIteration:
-					continue
+					flag_train = True
+					print('stopIter')
+					break
 				inputs, targets = self.model.get_input(data)
-				outputs = self.decoders[idx](self.encoder(inputs))
+				# outputs = self.decoders[idx](self.encoder(inputs))
+				outputs = inputs + self.decoders[idx](self.encoder(inputs))
+				outputs = torch.clamp(outputs, min=-1, max=1)
+
 				for _ in range(config['D_update_ratio']):
 					self.optimizers_Di[idx].zero_grad()
 					loss_di[name] = config['loss']['adv'] * self.criterionD(self.netsD[idx], outputs, targets)
@@ -202,18 +214,29 @@ class Trainer:
 
 		print('Validation')
 		tq.set_description('Validation')
+
+		# flag_val = False
+
 		with torch.no_grad():
 			for i in tq:
+				# if flag_val:
+				# 	break
 				loss_G = 0
 				for idx, dataset in enumerate(datasets["dataiterators"]):
 					name = mapping[str(idx)]
 					try:
 						data = next(dataset)
 					except StopIteration:
+						# flag_val = True
+						# print('stopIterVal')
+						# break
 						continue
 					#print("\n=========", data['A'].size())
 					inputs, targets = self.model.get_input(data)
-					outputs = self.decoders[idx](self.encoder(inputs))
+					# outputs = self.decoders[idx](self.encoder(inputs))
+					outputs = inputs + self.decoders[idx](self.encoder(inputs))
+					outputs = torch.clamp(outputs, min=-1, max=1)
+
 					loss_adv = self.criterionD.get_g_loss(self.netsD[idx], outputs)
 					loss_content = self.criterionG(outputs, targets)
 					loss_pix = self.criterionG_pix(outputs, targets)
@@ -301,8 +324,11 @@ class Trainer:
 		self.encoder.cuda()
 		for decoder in self.decoders:
 			decoder.cuda()
+
+
 		for netD in self.netsD:
 			netD.cuda()
+
 		self.model = get_model(self.config['model'])
 		self.criterionG, self.criterionG_pix, self.criterionD = get_loss(self.config['model'])
 		list_of_params = [x for y in self.decoders for x in y.parameters()]
