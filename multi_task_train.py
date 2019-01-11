@@ -23,7 +23,7 @@ class Trainer:
 	def __init__(self, config):
 		self.config = config
 		self.train_dataset = self._get_datasets(config, 'train')
-		self.val_dataset = self._get_datasets(config, 'val')
+		self.val_dataset = self._get_datasets(config, 'test')
 		self.best_metric = 0
 		self.warmup_epochs = config['warmup_num']
 
@@ -136,11 +136,12 @@ class Trainer:
 				mean_ssim_i[name] = np.mean(ssims_i[name][-REPORT_EACH:])
 				mean_loss_G_i[name] = np.mean(losses_G_i[name][-REPORT_EACH:])
 				if i % 200 == 0:
-					self.model.visualize_data(writer, self.config, data, outputs, i + (batches_per_epoch * epoch),
+					self.model.visualize_data('train', self.config, data, outputs, i + (batches_per_epoch * epoch),
 											  name)
 
 				self.optimizer_G.zero_grad()
 				loss_G += lg1
+
 
 			loss_G.backward()
 			self.optimizer_G.step()
@@ -167,7 +168,7 @@ class Trainer:
 			tq.set_postfix(loss=self.model.get_loss(mean_loss_G,
 													np.mean(list(mean_psnr_i.values())),
 													np.mean(list(mean_ssim_i.values()))))
-
+			break
 		tq.close()
 		return np.mean(losses_G)
 
@@ -203,7 +204,7 @@ class Trainer:
 		print('Validation')
 		tq.set_description('Validation')
 		with torch.no_grad():
-			for _ in tq:
+			for i in tq:
 				loss_G = 0
 				for idx, dataset in enumerate(datasets["dataiterators"]):
 					name = mapping[str(idx)]
@@ -222,6 +223,9 @@ class Trainer:
 					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
 					psnrs_i[name].append(curr_psnr)
 					ssims_i[name].append(curr_ssim)
+					if i%10 == 0:
+						self.model.visualize_data('val', self.config, data, outputs, i + (batches_per_epoch * epoch),
+												  name)
 
 					loss_G += lg1
 					losses_G.append(loss_G.item())

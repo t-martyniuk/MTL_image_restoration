@@ -40,7 +40,7 @@ class DeblurModel(nn.Module):
         return '{:.3f}; psnr={}; ssim={}'.format(mean_loss, mean_psnr, mean_ssim)
 
 
-    def visualize_data(self, writer, config, data, outputs, niter, degrad_type):
+    def visualize_data(self, phase, config, data, outputs, niter, degrad_type):
 
         # try:
         #     #images = vutils.make_grid([input_image, result_image, gt_image])
@@ -73,7 +73,7 @@ class DeblurModel(nn.Module):
 
 
 
-        folder_name = 'train_images_'+str(degrad_type)+'_'+str(config['experiment_desc'])
+        folder_name = phase + '_images_'+str(degrad_type)+'_'+str(config['experiment_desc'])
         if not os.path.exists(folder_name):
             os.makedirs(folder_name)
         cv2.imwrite(os.path.join(folder_name,
