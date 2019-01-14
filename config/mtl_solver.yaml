@@ -1,10 +1,10 @@
 ---
 project: multi_task_learning
-experiment_desc: mtl_2_2tasks
+experiment_desc: mtl_9_3tasks_fpn
 phase: train
-warmup_num: 0
+warmup_num: 3
 model:
-    g_name: resnet
+    g_name: fpn_inception
     blocks: 9
     d_name: n_layers
     d_layers: 3
@@ -33,11 +33,13 @@ datasets:
     dataroot_train: /home/tanya/datasets/d_hazy
     dataroot_val: /home/tanya/datasets/d_hazy
     fineSize: 256
-#  - type: rain
-#    batch_size: 1
-#    dataroot_train: /home/tanya/datasets/raindrop_data
-#    dataroot_val: /home/tanya/datasets/raindrop_data
-#    fineSize: 256
+  - type: rain
+    batch_size: 1
+#    dataroot_train: /home/ml/datasets/raindrop_data
+#    dataroot_val: /home/ml/datasets/raindrop_data
+    dataroot_train: /home/tanya/datasets/raindrop_data
+    dataroot_val: /home/tanya/datasets/raindrop_data
+    fineSize: 256
 image_size: [256, 256]
 D_update_ratio: 1
 loss:

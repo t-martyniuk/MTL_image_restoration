@@ -7,7 +7,7 @@ import numpy as np
 from models.fpn import FPNNet
 from models.unet_seresnext import UNetSEResNext
 from models.fpn_densenet import FPNDense
-from models.fpn_inception import FPNInception
+from models.fpn_inception import FPNEncoder, FPNDecoder
 ###############################################################################
 # Functions
 ###############################################################################
@@ -332,6 +332,12 @@ def get_nets_multitask(model_config, config):
         decs = [nn.DataParallel(x) for x in decs]
         # decoder1 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
         # decoder2 = ResNetDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer']))
+    elif generator_name == 'fpn_inception':
+        decs = []
+        encoder = FPNEncoder()
+        for _ in range(num_of_tasks):
+            decs.append(FPNDecoder(norm_layer=get_norm_layer(norm_type=model_config['norm_layer'])))
+        decs = [nn.DataParallel(x) for x in decs]
     else:
         raise ValueError("Generator Network [%s] not recognized." % generator_name)
     # return {'encoder': nn.DataParallel(encoder), 'decoder1': nn.DataParallel(decoder1),

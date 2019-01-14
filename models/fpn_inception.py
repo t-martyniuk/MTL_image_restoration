@@ -19,7 +19,7 @@ class FPNHead(nn.Module):
 
 class FPNInception(nn.Module):
 
-    def __init__(self, resnet, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256):
+    def __init__(self, norm_layer, output_ch=3, num_filters=128, num_filters_fpn=256):
         super().__init__()
 
         # Feature Pyramid Network (FPN) with four feature maps of resolutions
@@ -47,7 +47,7 @@ class FPNInception(nn.Module):
 
         self.final = nn.Conv2d(num_filters // 2, output_ch, kernel_size=3, padding=1)
 
-        self.resnet = resnet
+        #self.resnet = resnet
 
     def unfreeze(self):
         self.fpn.unfreeze()
@@ -69,7 +69,7 @@ class FPNInception(nn.Module):
         final = self.final(smoothed)
         res = torch.tanh(final) + x
 
-        return torch.tanh(self.resnet(res)), torch.clamp(res, min = -1,max = 1)
+        return torch.clamp(res, min = -1,max = 1)
 
 
 class FPN(nn.Module):
@@ -147,3 +147,70 @@ class FPN(nn.Module):
         map2 = F.pad(lateral2, pad, "reflect") + nn.functional.upsample(map3, scale_factor=2, mode="nearest")
         map1 = lateral1 + nn.functional.upsample(map2, scale_factor=2, mode="nearest")
         return F.pad(lateral0, pad1, "reflect"), map1, map2, map3, map4
+
+
+class FPNEncoder(nn.Module):
+    def __init__(self, num_filters=128, num_filters_fpn=256):
+        super().__init__()
+
+        # Feature Pyramid Network (FPN) with four feature maps of resolutions
+        # 1/4, 1/8, 1/16, 1/32 and `num_filters` filters for all feature maps.
+        self.fpn = FPN(num_filters=num_filters_fpn)
+
+        # The segmentation heads on top of the FPN
+
+        self.head1 = FPNHead(num_filters_fpn, num_filters, num_filters)
+        self.head2 = FPNHead(num_filters_fpn, num_filters, num_filters)
+        self.head3 = FPNHead(num_filters_fpn, num_filters, num_filters)
+        self.head4 = FPNHead(num_filters_fpn, num_filters, num_filters)
+
+    def unfreeze(self):
+        self.fpn.unfreeze()
+
+    def forward(self, x):
+
+        map0, map1, map2, map3, map4 = self.fpn(x)
+
+        map4 = nn.functional.upsample(self.head4(map4), scale_factor=8, mode="nearest")
+        map3 = nn.functional.upsample(self.head3(map3), scale_factor=4, mode="nearest")
+        map2 = nn.functional.upsample(self.head2(map2), scale_factor=2, mode="nearest")
+        map1 = nn.functional.upsample(self.head1(map1), scale_factor=1, mode="nearest")
+
+        output = {'0':map0, '1':map1, '2':map2, '3':map3, '4':map4}
+        return output
+
+class FPNDecoder(nn.Module):
+    def __init__(self, norm_layer, output_ch=3, num_filters=128):
+        super().__init__()
+
+        self.smooth = nn.Sequential(
+            nn.Conv2d(4 * num_filters, num_filters, kernel_size=3, padding=1),
+            norm_layer(num_filters),
+            nn.ReLU(),
+        )
+
+        self.smooth2 = nn.Sequential(
+            nn.Conv2d(num_filters, num_filters // 2, kernel_size=3, padding=1),
+            norm_layer(num_filters // 2),
+            nn.ReLU(),
+        )
+
+        self.final = nn.Conv2d(num_filters // 2, output_ch, kernel_size=3, padding=1)
+
+
+    def forward(self, input):
+
+        map0 = input['0']
+        map1 = input['1']
+        map2 = input['2']
+        map3 = input['3']
+        map4 = input['4']
+        smoothed = self.smooth(torch.cat([map4, map3, map2, map1], dim=1))
+        smoothed = nn.functional.upsample(smoothed, scale_factor=2, mode="nearest")
+        smoothed = self.smooth2(smoothed + map0)
+        smoothed = nn.functional.upsample(smoothed, scale_factor=2, mode="nearest")
+
+        final = self.final(smoothed)
+        res = torch.tanh(final)
+
+        return res

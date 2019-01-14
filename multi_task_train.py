@@ -32,10 +32,15 @@ class Trainer:
 	def train(self):
 		self._init_params()
 		for epoch in range(0, config['num_epochs']):
-				# if (epoch == self.warmup_epochs) and not(self.warmup_epochs == 0):
-				# 	self.netG.module.unfreeze()
-				# 	self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
-				# 	self.scheduler_G = self._get_scheduler(self.optimizer_G)
+			if (epoch == self.warmup_epochs) and not(self.warmup_epochs == 0):
+				self.encoder.module.unfreeze()
+
+				list_of_params = [x for y in self.decoders for x in y.parameters()]
+				list_of_params = list_of_params + list(self.encoder.parameters())
+				self.optimizer_G = self._get_optim(list_of_params, self.config['optimizer']['lr_G'])
+				self.scheduler_G = self._get_scheduler(self.optimizer_G)
+				# self.optimizer_G = self._get_optim(self.netG, self.config['optimizer']['lr_G'])
+				# self.scheduler_G = self._get_scheduler(self.optimizer_G)
 			train_loss = self._run_epoch(epoch)
 
 			val_loss, val_psnr, val_ssim = self._validate(epoch)
@@ -154,7 +159,8 @@ class Trainer:
 				self.optimizer_G.zero_grad()
 				loss_G += lg1
 
-
+			if flag_train:
+				break
 			loss_G.backward()
 			self.optimizer_G.step()
 			losses_G.append(loss_G.item())
@@ -234,6 +240,7 @@ class Trainer:
 					#print("\n=========", data['A'].size())
 					inputs, targets = self.model.get_input(data)
 					# outputs = self.decoders[idx](self.encoder(inputs))
+
 					outputs = inputs + self.decoders[idx](self.encoder(inputs))
 					outputs = torch.clamp(outputs, min=-1, max=1)
 
