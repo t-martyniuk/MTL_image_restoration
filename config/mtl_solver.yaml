@@ -1,6 +1,6 @@
 ---
 project: multi_task_learning
-experiment_desc: mtl_9_3tasks_fpn
+experiment_desc: mtl_13_1task_newfpn_l2
 phase: train
 warmup_num: 3
 model:
@@ -10,17 +10,17 @@ model:
     d_layers: 3
     fea_loss: perceptual
     pixel_loss: l2
-    disc_loss: wgan-gp
+    disc_loss: lsgan
     learn_residual: True
     backbone: resnet34
     pretrained: False
     norm_layer: instance
     dropout: True  
-num_epochs: 80
+num_epochs: 100
 num_workers: 4
 datasets:
   - type: unaligned
-    batch_size: 2
+    batch_size: 1
 #    dataroot_train: /home/ml/datasets/GOPRO_Large_3840_FPS
 #    dataroot_val: /home/ml/datasets/GOPRO_Large_3840_FPS
     dataroot_train: /home/tanya/datasets/GOPRO_Large_3840_FPS
@@ -43,14 +43,15 @@ datasets:
 image_size: [256, 256]
 D_update_ratio: 1
 loss:
-    adv: 0.01
-    l1: 0
+    vgg: 0.006
+    adv: 0.001
+    l1: 0.5
 optimizer:
     name: adam
     lr_G: 0.0001
-    lr_D: 0.0002
+    lr_D: 0.0001
 scheduler:
     name: linear
-    start_epoch: 40
+    start_epoch: 50
     min_lr: 0.0000001
 

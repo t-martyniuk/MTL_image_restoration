@@ -135,13 +135,13 @@ class Trainer:
 					loss_di[name] = config['loss']['adv'] * self.criterionD(self.netsD[idx], outputs, targets)
 					loss_di[name].backward(retain_graph=True)
 					self.optimizers_Di[idx].step()
-				loss_adv = self.criterionD.get_g_loss(self.netsD[idx], outputs)
-				loss_content = self.criterionG(outputs, targets)
-				loss_pix = self.criterionG_pix(outputs, targets)
+				loss_adv = config['loss']['adv'] * self.criterionD.get_g_loss(self.netsD[idx], outputs, targets)
+				loss_content = config['loss']['vgg'] * self.criterionG(outputs, targets)
+				loss_pix = config['loss']['l1'] * self.criterionG_pix(outputs, targets)
 				losses_adv_i[name].append(loss_adv.item())
 				losses_vgg_i[name].append(loss_content.item())
 				losses_l1_i[name].append(loss_pix.item())
-				lg1 = loss_content + config['loss']['l1'] * loss_pix + config['loss']['adv'] * loss_adv
+				lg1 = loss_content + loss_pix + loss_adv
 				losses_G_i[name].append(lg1.item())
 				curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
 				psnrs_i[name].append(curr_psnr)
@@ -244,10 +244,10 @@ class Trainer:
 					outputs = inputs + self.decoders[idx](self.encoder(inputs))
 					outputs = torch.clamp(outputs, min=-1, max=1)
 
-					loss_adv = self.criterionD.get_g_loss(self.netsD[idx], outputs)
-					loss_content = self.criterionG(outputs, targets)
-					loss_pix = self.criterionG_pix(outputs, targets)
-					lg1 = loss_content + config['loss']['l1'] * loss_pix + config['loss']['adv'] * loss_adv
+					loss_adv = config['loss']['adv'] * self.criterionD.get_g_loss(self.netsD[idx], outputs, targets)
+					loss_content = config['loss']['vgg'] * self.criterionG(outputs, targets)
+					loss_pix = config['loss']['l1'] * self.criterionG_pix(outputs, targets)
+					lg1 = loss_content + loss_pix + loss_adv
 					losses_G_i[name].append(lg1.item())
 					curr_psnr, curr_ssim = self.model.get_acc(outputs, targets)
 					psnrs_i[name].append(curr_psnr)

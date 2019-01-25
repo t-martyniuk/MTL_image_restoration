@@ -11,7 +11,7 @@ import PIL
 from pdb import set_trace as st
 import random
 import cv2
-from albumentations import Compose, Rotate, Normalize, HorizontalFlip, RandomCrop
+from albumentations import Compose, Rotate, Normalize, HorizontalFlip, RandomCrop, CenterCrop
 
 class UnalignedDataset(BaseDataset):
     def initialize(self, config, filename):
@@ -44,15 +44,20 @@ class UnalignedDataset(BaseDataset):
         self.A_size = len(self.A_paths)
         self.B_size = len(self.B_paths)
 
-        self.transform = Compose([
-            HorizontalFlip(),
-            Rotate(limit=20, p=0.4),
-            RandomCrop(self.config['fineSize'], self.config['fineSize'])
-                                  ])
-        self.input_norm = Compose([Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            )])
+        if filename == 'train':
+            self.transform = Compose([
+                HorizontalFlip(),
+                Rotate(limit=20, p=0.4),
+                RandomCrop(self.config['fineSize'], self.config['fineSize'])
+            ])
+        else:
+            self.transform = Compose([
+                CenterCrop(self.config['fineSize'], self.config['fineSize'])
+            ])
+        # self.input_norm = Compose([Normalize(
+        #         mean=[0.485, 0.456, 0.406],
+        #         std=[0.229, 0.224, 0.225],
+        #     )])
 
         self.output_norm = Compose([Normalize(
             mean=[0.5, 0.5, 0.5],
